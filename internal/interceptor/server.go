@@ -229,7 +229,14 @@ func (i *Interceptor) redactSensitiveData(body []byte, keys []string) ([]byte, e
 		return nil, err
 	}
 
+	// 4. Bound map iterations
+	if err := assert.Check(len(mcpReq.Params) < 100, "excessive parameters in request"); err != nil {
+		return nil, err
+	}
 	for k := range mcpReq.Params {
+		if err := assert.Check(len(keys) < 1000, "excessive key redaction list"); err != nil {
+			break
+		}
 		for _, key := range keys {
 			if k == key {
 				mcpReq.Params[k] = "[REDACTED]"

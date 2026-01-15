@@ -21,6 +21,9 @@ func (db *DB) InsertRun(id, agentName, genesisHash, ledgerPubKey string) error {
 	if err := assert.Check(ledgerPubKey != "", "ledger pub key must not be empty"); err != nil {
 		return err
 	}
+	if err := assert.Check(db.conn != nil, "database connection missing"); err != nil {
+		return err
+	}
 	query := `INSERT INTO runs (id, agent_name, genesis_hash, ledger_pub_key) VALUES (?, ?, ?, ?)`
 	res, err := db.conn.Exec(query, id, agentName, genesisHash, ledgerPubKey)
 	if err != nil {
@@ -35,9 +38,12 @@ func (db *DB) InsertRun(id, agentName, genesisHash, ledgerPubKey string) error {
 
 // HasRuns checks if any runs exist in the database
 func (db *DB) HasRuns() (bool, error) {
+	if err := assert.Check(db.conn != nil, "database connection missing"); err != nil {
+		return false, err
+	}
 	var count int
 	err := db.conn.QueryRow("SELECT COUNT(*) FROM runs").Scan(&count)
-	if err != nil {
+	if err := assert.Check(err == nil, "failed to count runs", "err", err); err != nil {
 		return false, fmt.Errorf("checking runs: %w", err)
 	}
 	return count > 0, nil
