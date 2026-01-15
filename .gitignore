@@ -1,0 +1,23 @@
+# Runtime files
+.ael_key
+*.db
+*.db-shm
+*.db-wal
+
+# Build artifacts
+ael
+
+# Go build cache
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
