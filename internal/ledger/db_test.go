@@ -61,7 +61,7 @@ func TestDB(t *testing.T) {
 	// Test GetRunID
 	gotRunID, err := db.GetRunID()
 	if err != nil {
-		t.Fatalf("GetRunID failed: %v", err)
+		t.Fatalf("GetRunID failed: %m", err)
 	}
 	if gotRunID != runID {
 		t.Errorf("Expected run ID %s, got %s", runID, gotRunID)
@@ -71,33 +71,35 @@ func TestDB(t *testing.T) {
 	eventID := "event-1"
 	timestamp := time.Now().Format(time.RFC3339Nano)
 	err = db.InsertEvent(
-		eventID, runID, 0, timestamp, "system", "genesis", "ael:init",
-		`{"foo":"bar"}`, `{}`, "", "", "prev-hash", "curr-hash", "sig",
+		"event-1", "run-1", 1, timestamp,
+		"agent", "tool_call", "mcp:list_tools", `{"foo":"bar"}`, "{}", "", "", "", "",
+		"genesis-hash", "hash-1", "sig-1",
 	)
 	if err != nil {
 		t.Fatalf("InsertEvent failed: %v", err)
 	}
 
 	// Test GetLastEvent
-	seq, hash, err := db.GetLastEvent(runID)
+	seq, hash, err := db.GetLastEvent("run-1")
 	if err != nil {
 		t.Fatalf("GetLastEvent failed: %v", err)
 	}
-	if seq != 0 || hash != "curr-hash" {
-		t.Errorf("Expected seq 0, hash curr-hash; got %d, %s", seq, hash)
+	if seq != 1 || hash != "hash-1" {
+		t.Errorf("Expected seq 1, hash hash-1; got %d, %s", seq, hash)
 	}
 
 	// Test GetAllEvents
-	events, err := db.GetAllEvents(runID)
+	events, err := db.GetAllEvents("run-1")
 	if err != nil {
 		t.Fatalf("GetAllEvents failed: %v", err)
 	}
 	if len(events) != 1 {
 		t.Fatalf("Expected 1 event, got %d", len(events))
 	}
-	if events[0].ID != eventID {
-		t.Errorf("Expected event ID %s, got %s", eventID, events[0].ID)
+	if events[0].ID != "event-1" {
+		t.Errorf("Expected event ID event-1, got %s", events[0].ID)
 	}
+	// Params check (InsertEvent used `{"foo":"bar"}`)
 	if events[0].Params["foo"] != "bar" {
 		t.Errorf("Expected param foo=bar, got %v", events[0].Params["foo"])
 	}
@@ -112,7 +114,7 @@ func TestDB(t *testing.T) {
 	}
 
 	// Test GetRecentEvents
-	recent, err := db.GetRecentEvents(runID, 10)
+	recent, err := db.GetRecentEvents("run-1", 10)
 	if err != nil {
 		t.Fatalf("GetRecentEvents failed: %v", err)
 	}

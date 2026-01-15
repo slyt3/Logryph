@@ -76,20 +76,16 @@ func (db *DB) InsertRun(id, agentName, genesisHash, ledgerPubKey string) error {
 }
 
 // InsertEvent inserts a new event into the ledger
-func (db *DB) InsertEvent(
-	id, runID string,
-	seqIndex int,
-	timestamp, actor, eventType, method, params, response, taskID, taskState, prevHash, currentHash, signature string,
-) error {
+func (db *DB) InsertEvent(id, runID string, seqIndex int, timestamp, actor, eventType, method, params, response, taskID, taskState, policyID, riskLevel, prevHash, currentHash, signature string) error {
 	query := `
 		INSERT INTO events (
 			id, run_id, seq_index, timestamp, actor, event_type, method, params, response,
-			task_id, task_state, prev_hash, current_hash, signature
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			task_id, task_state, policy_id, risk_level, prev_hash, current_hash, signature
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := db.conn.Exec(query,
 		id, runID, seqIndex, timestamp, actor, eventType, method, params, response,
-		taskID, taskState, prevHash, currentHash, signature,
+		taskID, taskState, policyID, riskLevel, prevHash, currentHash, signature,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting event: %w", err)
@@ -138,7 +134,7 @@ func (db *DB) GetRunID() (string, error) {
 func (db *DB) GetAllEvents(runID string) ([]proxy.Event, error) {
 	query := `
 		SELECT id, run_id, seq_index, timestamp, actor, event_type, method, 
-		       params, response, task_id, task_state, prev_hash, current_hash, signature
+		       params, response, task_id, task_state, policy_id, risk_level, prev_hash, current_hash, signature
 		FROM events 
 		WHERE run_id = ? 
 		ORDER BY seq_index ASC
@@ -153,15 +149,18 @@ func (db *DB) GetAllEvents(runID string) ([]proxy.Event, error) {
 	var events []proxy.Event
 	for rows.Next() {
 		var e proxy.Event
-		var timestamp, params, response, taskID, taskState string
+		var timestamp, params, response, taskID, taskState, policyID, riskLevel string
 
 		err := rows.Scan(
 			&e.ID, &e.RunID, &e.SeqIndex, &timestamp, &e.Actor, &e.EventType, &e.Method,
-			&params, &response, &taskID, &taskState, &e.PrevHash, &e.CurrentHash, &e.Signature,
+			&params, &response, &taskID, &taskState, &policyID, &riskLevel, &e.PrevHash, &e.CurrentHash, &e.Signature,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning event: %w", err)
 		}
+
+		e.PolicyID = policyID
+		e.RiskLevel = riskLevel
 
 		// Parse timestamp
 		t, err := time.Parse(time.RFC3339Nano, timestamp)
@@ -209,7 +208,7 @@ func (db *DB) GetRunInfo(runID string) (agentName, genesisHash, pubKey string, e
 func (db *DB) GetRecentEvents(runID string, limit int) ([]proxy.Event, error) {
 	query := `
 		SELECT id, run_id, seq_index, timestamp, actor, event_type, method, 
-		       params, response, task_id, task_state, prev_hash, current_hash, signature
+		       params, response, task_id, task_state, policy_id, risk_level, prev_hash, current_hash, signature
 		FROM events 
 		WHERE run_id = ? 
 		ORDER BY seq_index DESC 
@@ -225,11 +224,11 @@ func (db *DB) GetRecentEvents(runID string, limit int) ([]proxy.Event, error) {
 	var events []proxy.Event
 	for rows.Next() {
 		var e proxy.Event
-		var timestamp, params, response, taskID, taskState string
+		var timestamp, params, response, taskID, taskState, policyID, riskLevel string
 
 		err := rows.Scan(
 			&e.ID, &e.RunID, &e.SeqIndex, &timestamp, &e.Actor, &e.EventType, &e.Method,
-			&params, &response, &taskID, &taskState, &e.PrevHash, &e.CurrentHash, &e.Signature,
+			&params, &response, &taskID, &taskState, &policyID, &riskLevel, &e.PrevHash, &e.CurrentHash, &e.Signature,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning event: %w", err)
@@ -237,6 +236,8 @@ func (db *DB) GetRecentEvents(runID string, limit int) ([]proxy.Event, error) {
 
 		e.TaskID = taskID
 		e.TaskState = taskState
+		e.PolicyID = policyID
+		e.RiskLevel = riskLevel
 
 		events = append(events, e)
 	}
@@ -248,17 +249,17 @@ func (db *DB) GetRecentEvents(runID string, limit int) ([]proxy.Event, error) {
 func (db *DB) GetEventByID(eventID string) (*proxy.Event, error) {
 	query := `
 		SELECT id, run_id, seq_index, timestamp, actor, event_type, method, 
-		       params, response, task_id, task_state, prev_hash, current_hash, signature
+		       params, response, task_id, task_state, policy_id, risk_level, prev_hash, current_hash, signature
 		FROM events 
 		WHERE id = ?
 	`
 
 	var e proxy.Event
-	var timestamp, params, response, taskID, taskState string
+	var timestamp, params, response, taskID, taskState, policyID, riskLevel string
 
 	err := db.conn.QueryRow(query, eventID).Scan(
 		&e.ID, &e.RunID, &e.SeqIndex, &timestamp, &e.Actor, &e.EventType, &e.Method,
-		&params, &response, &taskID, &taskState, &e.PrevHash, &e.CurrentHash, &e.Signature,
+		&params, &response, &taskID, &taskState, &policyID, &riskLevel, &e.PrevHash, &e.CurrentHash, &e.Signature,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("event not found: %s", eventID)
@@ -269,6 +270,120 @@ func (db *DB) GetEventByID(eventID string) (*proxy.Event, error) {
 
 	e.TaskID = taskID
 	e.TaskState = taskState
+	e.PolicyID = policyID
+	e.RiskLevel = riskLevel
 
 	return &e, nil
+}
+
+// Stats related structs
+type RunStats struct {
+	RunID         string         `json:"run_id"`
+	TotalEvents   int            `json:"total_events"`
+	CallCount     int            `json:"call_count"`
+	BlockedCount  int            `json:"blocked_count"`
+	RiskBreakdown map[string]int `json:"risk_breakdown"`
+}
+
+type GlobalStats struct {
+	TotalRuns     int `json:"total_runs"`
+	TotalEvents   int `json:"total_events"`
+	CriticalCount int `json:"critical_count"`
+}
+
+// GetRunStats returns statistics for a specific run
+func (db *DB) GetRunStats(runID string) (*RunStats, error) {
+	stats := &RunStats{
+		RunID:         runID,
+		RiskBreakdown: make(map[string]int),
+	}
+
+	// Total and Blocked counts
+	err := db.conn.QueryRow(`
+		SELECT COUNT(*), 
+		       SUM(CASE WHEN event_type = 'blocked' THEN 1 ELSE 0 END),
+		       SUM(CASE WHEN event_type = 'tool_call' THEN 1 ELSE 0 END)
+		FROM events WHERE run_id = ?`, runID).Scan(&stats.TotalEvents, &stats.BlockedCount, &stats.CallCount)
+	if err != nil {
+		return nil, err
+	}
+
+	// Risk breakdown
+	rows, err := db.conn.Query(`
+		SELECT risk_level, COUNT(*) FROM events 
+		WHERE run_id = ? AND risk_level != '' 
+		GROUP BY risk_level`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var risk string
+		var count int
+		if err := rows.Scan(&risk, &count); err == nil {
+			stats.RiskBreakdown[risk] = count
+		}
+	}
+
+	return stats, nil
+}
+
+// GetGlobalStats returns overall statistics
+func (db *DB) GetGlobalStats() (*GlobalStats, error) {
+	stats := &GlobalStats{}
+
+	err := db.conn.QueryRow(`SELECT COUNT(*) FROM runs`).Scan(&stats.TotalRuns)
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.conn.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&stats.TotalEvents)
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.conn.QueryRow(`SELECT COUNT(*) FROM events WHERE risk_level = 'critical'`).Scan(&stats.CriticalCount)
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+// GetRiskEvents returns events with high or critical risk
+func (db *DB) GetRiskEvents() ([]proxy.Event, error) {
+	query := `
+		SELECT id, run_id, seq_index, timestamp, actor, event_type, method, params, response,
+		       task_id, task_state, policy_id, risk_level, prev_hash, current_hash, signature
+		FROM events 
+		WHERE risk_level IN ('high', 'critical')
+		ORDER BY timestamp DESC
+	`
+	rows, err := db.conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []proxy.Event
+	for rows.Next() {
+		var e proxy.Event
+		var timestamp, params, response, taskID, taskState, policyID, riskLevel string
+
+		err := rows.Scan(
+			&e.ID, &e.RunID, &e.SeqIndex, &timestamp, &e.Actor, &e.EventType, &e.Method,
+			&params, &response, &taskID, &taskState, &policyID, &riskLevel, &e.PrevHash, &e.CurrentHash, &e.Signature,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		e.PolicyID = policyID
+		e.RiskLevel = riskLevel
+		// Minimal parsing for reporting
+		events = append(events, e)
+	}
+
+	return events, nil
 }

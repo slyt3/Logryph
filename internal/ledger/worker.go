@@ -158,6 +158,10 @@ func (w *Worker) persistEvent(event *proxy.Event) error {
 		"method":     event.Method,
 		"params":     event.Params,
 		"response":   event.Response,
+		"task_id":    event.TaskID,
+		"task_state": event.TaskState,
+		"policy_id":  event.PolicyID,
+		"risk_level": event.RiskLevel,
 	}
 
 	currentHash, err := crypto.CalculateEventHash(event.PrevHash, payload)

@@ -45,6 +45,10 @@ func CreateGenesisBlock(db *DB, signer *crypto.Signer, agentName string) (string
 		"method":     genesisEvent.Method,
 		"params":     genesisEvent.Params,
 		"response":   genesisEvent.Response,
+		"task_id":    genesisEvent.TaskID,
+		"task_state": genesisEvent.TaskState,
+		"policy_id":  genesisEvent.PolicyID,
+		"risk_level": genesisEvent.RiskLevel,
 	}
 
 	currentHash, err := crypto.CalculateEventHash(genesisEvent.PrevHash, payload)
@@ -92,6 +96,8 @@ func insertEvent(db *DB, event proxy.Event) error {
 		responseJSON,
 		event.TaskID,
 		event.TaskState,
+		event.PolicyID,
+		event.RiskLevel,
 		event.PrevHash,
 		event.CurrentHash,
 		event.Signature,

@@ -2,11 +2,14 @@ package main
 
 import (
 	"flag"
-	"io"
 	"fmt"
-	"net/http"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"time"
+
+	"encoding/json"
 
 	"github.com/yourname/ael/internal/crypto"
 	"github.com/yourname/ael/internal/ledger"
@@ -31,6 +34,12 @@ func main() {
 		approveCommand()
 	case "reject":
 		rejectCommand()
+	case "stats":
+		statsCommand()
+	case "risk":
+		riskCommand()
+	case "export":
+		exportCommand()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -47,6 +56,9 @@ func printUsage() {
 	fmt.Println("  ael events [--limit N]  List recent events (default: 10)")
 	fmt.Println("  ael approve <event-id>  Approve a stalled action")
 	fmt.Println("  ael reject <event-id>   Reject a stalled action")
+	fmt.Println("  ael stats               Show detailed run and global statistics")
+	fmt.Println("  ael risk                List all high-risk events")
+	fmt.Println("  ael export <file.json>  Export the current run to a JSON file")
 }
 
 func verifyCommand() {
@@ -222,4 +234,122 @@ func rejectCommand() {
 		fmt.Printf("✗ Failed to reject event: %s\n", string(body))
 		os.Exit(1)
 	}
+}
+
+func statsCommand() {
+	db, err := ledger.NewDB("ael.db")
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	runID, _ := db.GetRunID()
+	if runID == "" {
+		fmt.Println("No runs found")
+		return
+	}
+
+	stats, err := db.GetRunStats(runID)
+	if err != nil {
+		log.Fatalf("Failed to get stats: %v", err)
+	}
+
+	gStats, _ := db.GetGlobalStats()
+
+	fmt.Printf("Run Statistics (%s)\n", runID[:8])
+	fmt.Println("=======================")
+	fmt.Printf("Total Events:    %d\n", stats.TotalEvents)
+	fmt.Printf("Tool Calls:      %d\n", stats.CallCount)
+	fmt.Printf("Blocked Calls:   %d\n", stats.BlockedCount)
+	fmt.Println("\nRisk Breakdown:")
+	if len(stats.RiskBreakdown) == 0 {
+		fmt.Println("  None")
+	} else {
+		for risk, count := range stats.RiskBreakdown {
+			fmt.Printf("  %-10s: %d\n", risk, count)
+		}
+	}
+
+	if gStats != nil {
+		fmt.Println("\nGlobal Context")
+		fmt.Println("--------------")
+		fmt.Printf("Total Runs:      %d\n", gStats.TotalRuns)
+		fmt.Printf("Total Events:    %d\n", gStats.TotalEvents)
+		fmt.Printf("Critical Alerts: %d\n", gStats.CriticalCount)
+	}
+}
+
+func riskCommand() {
+	db, err := ledger.NewDB("ael.db")
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	risky, err := db.GetRiskEvents()
+	if err != nil {
+		log.Fatalf("Failed to get risky events: %v", err)
+	}
+
+	if len(risky) == 0 {
+		fmt.Println("✓ No high-risk events detected")
+		return
+	}
+
+	fmt.Printf("High-Risk Events Found: %d\n", len(risky))
+	fmt.Println("==========================")
+	for _, e := range risky {
+		fmt.Printf("[%s] %-8s | %-10s | %s\n", e.RiskLevel, e.ID[:8], e.EventType, e.Method)
+		if e.PolicyID != "" {
+			fmt.Printf("    Policy: %s\n", e.PolicyID)
+		}
+	}
+}
+
+func exportCommand() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: ael export <output-file.json>")
+		os.Exit(1)
+	}
+	outputFile := os.Args[2]
+
+	db, err := ledger.NewDB("ael.db")
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	runID, _ := db.GetRunID()
+	if runID == "" {
+		fmt.Println("No runs found")
+		return
+	}
+
+	events, err := db.GetAllEvents(runID)
+	if err != nil {
+		log.Fatalf("Failed to get events: %v", err)
+	}
+
+	agent, genesisHash, pubKey, _ := db.GetRunInfo(runID)
+
+	exportData := map[string]interface{}{
+		"run_id":       runID,
+		"agent":        agent,
+		"genesis_hash": genesisHash,
+		"public_key":   pubKey,
+		"events":       events,
+		"exported_at":  time.Now(),
+	}
+
+	data, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		log.Fatalf("Failed to marshal export data: %v", err)
+	}
+
+	err = os.WriteFile(outputFile, data, 0644)
+	if err != nil {
+		log.Fatalf("Failed to write to file: %v", err)
+	}
+
+	fmt.Printf("✓ Exported %d events to %s\n", len(events), outputFile)
 }

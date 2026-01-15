@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS events (
     response TEXT,       -- JSON string
     task_id TEXT,        -- MCP SEP-1686
     task_state TEXT,     -- working | input_required | completed | failed | cancelled
+    policy_id TEXT,      -- Matched policy ID
+    risk_level TEXT,     -- low | medium | high | critical
     prev_hash TEXT,
     current_hash TEXT,
     signature TEXT,

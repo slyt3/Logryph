@@ -139,7 +139,7 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 		return
 	}
 
-	// Check if method should be stalled
+	// Check if method should be stalled (Policy Guard)
 	shouldStall, matchedRule := a.shouldStallMethod(mcpReq.Method, mcpReq.Params)
 
 	if shouldStall {
@@ -152,13 +152,15 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 		log.Printf("Policy: %s (Risk: %s)", matchedRule.ID, matchedRule.RiskLevel)
 		log.Printf("Event ID: %s", eventID)
 
-		// Create blocked event (Proof of Refusal)
+		// Create blocked event
 		event := proxy.Event{
 			ID:         eventID,
 			Timestamp:  time.Now(),
 			EventType:  "blocked",
 			Method:     mcpReq.Method,
 			Params:     mcpReq.Params,
+			PolicyID:   matchedRule.ID,
+			RiskLevel:  matchedRule.RiskLevel,
 			WasBlocked: true,
 		}
 		a.worker.Submit(event)
@@ -199,6 +201,12 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 		Params:    mcpReq.Params,
 		TaskID:    taskID,
 		TaskState: taskState,
+	}
+
+	// If a rule matched but didn't stall, we still want the metadata
+	if matchedRule != nil {
+		event.PolicyID = matchedRule.ID
+		event.RiskLevel = matchedRule.RiskLevel
 	}
 
 	// Track task if present

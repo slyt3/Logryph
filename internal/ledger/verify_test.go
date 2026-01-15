@@ -60,6 +60,10 @@ func TestVerifyChain(t *testing.T) {
 		"method":     event1.Method,
 		"params":     event1.Params,
 		"response":   event1.Response,
+		"task_id":    "",
+		"task_state": "",
+		"policy_id":  "",
+		"risk_level": "",
 	}
 
 	h1, _ := crypto.CalculateEventHash(event1.PrevHash, payload1)
@@ -67,11 +71,14 @@ func TestVerifyChain(t *testing.T) {
 	s1, _ := signer.SignHash(h1)
 	event1.Signature = s1
 
-	_ = db.InsertEvent(
+	err := db.InsertEvent(
 		event1.ID, event1.RunID, event1.SeqIndex, event1.Timestamp.Format(time.RFC3339Nano),
-		event1.Actor, event1.EventType, event1.Method, `{"foo":"bar"}`, `{}`, "", "",
+		event1.Actor, event1.EventType, event1.Method, `{"foo":"bar"}`, "{}", "", "", "", "",
 		event1.PrevHash, event1.CurrentHash, event1.Signature,
 	)
+	if err != nil {
+		t.Fatalf("Failed to insert event: %v", err)
+	}
 
 	// Verify valid chain
 	result, err := VerifyChain(db, genesisID, signer)
