@@ -45,7 +45,7 @@ type AELProxy struct {
 }
 
 func main() {
-	log.Println("AEL (Agent Execution Ledger) - Phase 1: The Interceptor")
+	log.Println("AEL (Agent Execution Ledger) - The Interceptor")
 
 	// Load policy
 	policy, err := proxy.LoadPolicy("ael-policy.yaml")
@@ -196,7 +196,7 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 		// In production, this would be handled by the CLI tool
 		go func() {
 			var input string
-			fmt.Scanln(&input)
+			_, _ = fmt.Scanln(&input)
 			if _, ok := a.stallSignals.Load(eventID); ok {
 				approvalChan <- true
 			}
@@ -350,7 +350,7 @@ func (a *AELProxy) handleRekey(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Old Public Key: %s", oldPubKey)
 	log.Printf("New Public Key: %s", newPubKey)
 
-	fmt.Fprintf(w, "Key rotated successfully\nOld: %s\nNew: %s", oldPubKey, newPubKey)
+	_, _ = fmt.Fprintf(w, "Key rotated successfully\nOld: %s\nNew: %s", oldPubKey, newPubKey)
 }
 
 // handleApprove handles approval requests from the CLI
@@ -377,7 +377,7 @@ func (a *AELProxy) handleApprove(w http.ResponseWriter, r *http.Request) {
 	case approvalChan <- true:
 		log.Printf("Event %s approved via CLI", eventID)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Event approved\n"))
+		_, _ = w.Write([]byte("Event approved\n"))
 	default:
 		http.Error(w, "Event already processed", http.StatusConflict)
 	}
@@ -407,7 +407,7 @@ func (a *AELProxy) handleReject(w http.ResponseWriter, r *http.Request) {
 	case approvalChan <- false:
 		log.Printf("Event %s rejected via CLI", eventID)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Event rejected\n"))
+		_, _ = w.Write([]byte("Event rejected\n"))
 	default:
 		http.Error(w, "Event already processed", http.StatusConflict)
 	}

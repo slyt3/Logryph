@@ -39,7 +39,7 @@ func TestIntegration(t *testing.T) {
 
 	// Copy schema and policy
 	schemaContent, _ := os.ReadFile("../schema.sql")
-	os.WriteFile(filepath.Join(tmpDir, "schema.sql"), schemaContent, 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "schema.sql"), schemaContent, 0644)
 
 	policyContent := `
 version: "2026.1"
@@ -49,14 +49,14 @@ policies:
     risk_level: critical
     action: stall
 `
-	os.WriteFile(filepath.Join(tmpDir, "ael-policy.yaml"), []byte(policyContent), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "ael-policy.yaml"), []byte(policyContent), 0644)
 
 	// 3. Start Mock MCP Server
 	mockServer := &http.Server{
 		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var mcpReq map[string]interface{}
-			json.NewDecoder(r.Body).Decode(&mcpReq)
+			_ = json.NewDecoder(r.Body).Decode(&mcpReq)
 
 			resp := map[string]interface{}{
 				"jsonrpc": "2.0",
@@ -64,10 +64,12 @@ policies:
 				"result":  map[string]interface{}{"success": true},
 			}
 			json.NewEncoder(w).SetIndent("", "  ")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		}),
 	}
-	go mockServer.ListenAndServe()
+	go func() {
+		_ = mockServer.ListenAndServe()
+	}()
 	defer mockServer.Close()
 
 	// 4. Start AEL Proxy
@@ -79,7 +81,7 @@ policies:
 	if err := aelCmd.Start(); err != nil {
 		t.Fatalf("Failed to start ael: %v", err)
 	}
-	defer aelCmd.Process.Kill()
+	defer func() { _ = aelCmd.Process.Kill() }()
 
 	// Wait for readiness
 	ready := make(chan bool)
@@ -201,6 +203,6 @@ func sendRequest(url string, reqBody interface{}) (map[string]interface{}, error
 
 	body, _ := io.ReadAll(resp.Body)
 	var res map[string]interface{}
-	json.Unmarshal(body, &res)
+	_ = json.Unmarshal(body, &res)
 	return res, nil
 }

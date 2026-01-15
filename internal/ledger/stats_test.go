@@ -16,14 +16,14 @@ func TestStats(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(tmpDir, "schema.sql"), schemaContent, 0644)
 
 	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	db, _ := NewDB("ael.db")
 	defer db.Close()
 
 	runID := "run-stats-1"
-	db.InsertRun(runID, "agent-1", "gen-hash", "pub-key")
+	_ = db.InsertRun(runID, "agent-1", "gen-hash", "pub-key")
 
 	now := time.Now().Format(time.RFC3339Nano)
 

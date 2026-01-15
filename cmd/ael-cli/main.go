@@ -150,7 +150,7 @@ func eventsCommand() {
 	// Parse flags
 	eventsFlags := flag.NewFlagSet("events", flag.ExitOnError)
 	limit := eventsFlags.Int("limit", 10, "Number of events to show")
-	eventsFlags.Parse(os.Args[2:])
+	_ = eventsFlags.Parse(os.Args[2:])
 
 	// Open database
 	db, err := ledger.NewDB("ael.db")

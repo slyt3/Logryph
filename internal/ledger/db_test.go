@@ -27,8 +27,8 @@ func TestDB(t *testing.T) {
 
 	// Change working directory to tmpDir so NewDB can find schema.sql
 	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	// Create database
 	db, err := NewDB("ael.db")

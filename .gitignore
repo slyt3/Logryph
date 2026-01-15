@@ -5,9 +5,9 @@
 *.db-wal
 
 # Build artifacts
-ael
-ael-cli
-ael-proxy
+/ael
+/ael-cli
+/ael-proxy
 
 # Specification
 AEL_SPEC.txt

@@ -16,8 +16,8 @@ func TestVerifyChain(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	schemaContent, _ := os.ReadFile(filepath.Join(oldWd, "../../schema.sql"))
 	os.WriteFile("schema.sql", schemaContent, 0644)
