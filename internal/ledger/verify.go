@@ -75,6 +75,7 @@ func VerifyEvent(event *proxy.Event, signer *crypto.Signer) error {
 		"response":   event.Response,
 		"task_id":    event.TaskID,
 		"task_state": event.TaskState,
+		"parent_id":  event.ParentID,
 		"policy_id":  event.PolicyID,
 		"risk_level": event.RiskLevel,
 	}

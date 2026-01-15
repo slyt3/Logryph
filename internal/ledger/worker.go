@@ -42,6 +42,16 @@ func NewWorker(bufferSize int, dbPath, keyPath string) (*Worker, error) {
 	}, nil
 }
 
+// GetDB returns the database instance
+func (w *Worker) GetDB() *DB {
+	return w.db
+}
+
+// GetSigner returns the signer instance
+func (w *Worker) GetSigner() *crypto.Signer {
+	return w.signer
+}
+
 // Start begins processing events in the background
 func (w *Worker) Start() error {
 	// Check if we need to create genesis block
@@ -160,6 +170,7 @@ func (w *Worker) persistEvent(event *proxy.Event) error {
 		"response":   event.Response,
 		"task_id":    event.TaskID,
 		"task_state": event.TaskState,
+		"parent_id":  event.ParentID,
 		"policy_id":  event.PolicyID,
 		"risk_level": event.RiskLevel,
 	}

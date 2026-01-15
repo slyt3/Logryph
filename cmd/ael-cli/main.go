@@ -13,6 +13,7 @@ import (
 
 	"github.com/yourname/ael/internal/crypto"
 	"github.com/yourname/ael/internal/ledger"
+	"github.com/yourname/ael/internal/proxy"
 )
 
 func main() {
@@ -40,6 +41,10 @@ func main() {
 		riskCommand()
 	case "export":
 		exportCommand()
+	case "topology":
+		topologyCommand()
+	case "rekey":
+		rekeyCommand()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -59,6 +64,8 @@ func printUsage() {
 	fmt.Println("  ael stats               Show detailed run and global statistics")
 	fmt.Println("  ael risk                List all high-risk events")
 	fmt.Println("  ael export <file.json>  Export the current run to a JSON file")
+	fmt.Println("  ael topology <task-id>  Show the hierarchy of tools within a task")
+	fmt.Println("  ael rekey               Rotate the Ed25519 signing keys")
 }
 
 func verifyCommand() {
@@ -352,4 +359,76 @@ func exportCommand() {
 	}
 
 	fmt.Printf("✓ Exported %d events to %s\n", len(events), outputFile)
+}
+
+func topologyCommand() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: ael topology <task-id>")
+		os.Exit(1)
+	}
+	taskID := os.Args[2]
+
+	db, err := ledger.NewDB("ael.db")
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	events, err := db.GetEventsByTaskID(taskID)
+	if err != nil {
+		log.Fatalf("Failed to get events: %v", err)
+	}
+
+	if len(events) == 0 {
+		fmt.Printf("No events found for task %s\n", taskID)
+		return
+	}
+
+	fmt.Printf("Task Topology: %s\n", taskID)
+	fmt.Println("======================================")
+
+	// Build the tree
+	byParent := make(map[string][]proxy.Event)
+	var roots []proxy.Event
+
+	for _, e := range events {
+		if e.ParentID == "" {
+			roots = append(roots, e)
+		} else {
+			byParent[e.ParentID] = append(byParent[e.ParentID], e)
+		}
+	}
+
+	var printNode func(e proxy.Event, indent string)
+	printNode = func(e proxy.Event, indent string) {
+		status := ""
+		if e.WasBlocked {
+			status = " [BLOCKED]"
+		}
+		fmt.Printf("%s└─ %s (%s)%s\n", indent, e.Method, e.ID[:8], status)
+		children := byParent[e.ID]
+		for _, child := range children {
+			printNode(child, indent+"   ")
+		}
+	}
+
+	for _, root := range roots {
+		printNode(root, "")
+	}
+}
+
+func rekeyCommand() {
+	resp, err := http.Post("http://localhost:9998/api/rekey", "application/json", nil)
+	if err != nil {
+		log.Fatalf("Failed to contact AEL API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Fatalf("Rekey failed: %s", string(body))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(body))
 }

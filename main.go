@@ -36,11 +36,12 @@ type MCPResponse struct {
 
 // AELProxy is the main proxy server
 type AELProxy struct {
-	proxy        *httputil.ReverseProxy
-	worker       *ledger.Worker
-	activeTasks  *sync.Map
-	policy       *proxy.PolicyConfig
-	stallSignals *sync.Map // Maps event ID to approval channel
+	proxy           *httputil.ReverseProxy
+	worker          *ledger.Worker
+	activeTasks     *sync.Map // task_id -> state
+	policy          *proxy.PolicyConfig
+	stallSignals    *sync.Map // Maps event ID to approval channel
+	lastEventByTask *sync.Map // task_id -> last_event_id
 }
 
 func main() {
@@ -75,11 +76,12 @@ func main() {
 
 	// Create AEL proxy
 	aelProxy := &AELProxy{
-		proxy:        proxy,
-		worker:       worker,
-		activeTasks:  &sync.Map{},
-		policy:       policy,
-		stallSignals: &sync.Map{},
+		proxy:           proxy,
+		worker:          worker,
+		activeTasks:     &sync.Map{}, // task_id -> state
+		policy:          policy,
+		stallSignals:    &sync.Map{}, // event_id -> chan struct{}
+		lastEventByTask: &sync.Map{}, // task_id -> last_event_id
 	}
 
 	// Custom director to intercept requests
@@ -97,6 +99,7 @@ func main() {
 		apiMux := http.NewServeMux()
 		apiMux.HandleFunc("/api/approve/", aelProxy.handleApprove)
 		apiMux.HandleFunc("/api/reject/", aelProxy.handleReject)
+		apiMux.HandleFunc("/api/rekey", aelProxy.handleRekey)
 
 		apiAddr := ":9998"
 		log.Printf("API server listening on %s", apiAddr)
@@ -139,6 +142,14 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 		return
 	}
 
+	// Extract task_id if present (SEP-1686)
+	var taskID string
+	var taskState string
+	if params, ok := mcpReq.Params["task_id"].(string); ok {
+		taskID = params
+		taskState = "working" // Default state
+	}
+
 	// Check if method should be stalled (Policy Guard)
 	shouldStall, matchedRule := a.shouldStallMethod(mcpReq.Method, mcpReq.Params)
 
@@ -159,6 +170,8 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 			EventType:  "blocked",
 			Method:     mcpReq.Method,
 			Params:     mcpReq.Params,
+			TaskID:     taskID,
+			TaskState:  taskState,
 			PolicyID:   matchedRule.ID,
 			RiskLevel:  matchedRule.RiskLevel,
 			WasBlocked: true,
@@ -169,6 +182,14 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 		approvalChan := make(chan bool, 1)
 		a.stallSignals.Store(eventID, approvalChan)
 
+		// Stall Intelligence: Check for previous failures in this task
+		if taskID != "" {
+			failCount, err := a.worker.GetDB().GetTaskFailureCount(taskID)
+			if err == nil && failCount > 0 {
+				log.Printf("⚠️ STALL INTELLIGENCE WARNING: Task %s has failed %d times in previous events.", taskID, failCount)
+			}
+		}
+
 		log.Printf("Waiting for approval... (Type 'ael approve %s' or press Enter to continue)", eventID)
 
 		// For demo purposes, we'll wait for a simple stdin signal
@@ -176,20 +197,14 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 		go func() {
 			var input string
 			fmt.Scanln(&input)
-			approvalChan <- true
+			if _, ok := a.stallSignals.Load(eventID); ok {
+				approvalChan <- true
+			}
 		}()
 
 		// Wait for approval
 		<-approvalChan
 		log.Printf("Event %s approved, continuing...", eventID)
-	}
-
-	// Extract task_id if present (SEP-1686)
-	var taskID string
-	var taskState string
-	if params, ok := mcpReq.Params["task_id"].(string); ok {
-		taskID = params
-		taskState = "working" // Default state
 	}
 
 	// Create event
@@ -207,6 +222,19 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 	if matchedRule != nil {
 		event.PolicyID = matchedRule.ID
 		event.RiskLevel = matchedRule.RiskLevel
+
+		// Apply redaction if policy specifies it
+		if len(matchedRule.Redact) > 0 {
+			event.Params = redactParams(mcpReq.Params, matchedRule.Redact)
+		}
+	}
+
+	// Hierarchy tracking: if this task has a previous event, link it
+	if taskID != "" {
+		if parentID, ok := a.lastEventByTask.Load(taskID); ok {
+			event.ParentID = parentID.(string)
+		}
+		a.lastEventByTask.Store(taskID, event.ID)
 	}
 
 	// Track task if present
@@ -288,6 +316,41 @@ func (a *AELProxy) shouldStallMethod(method string, params map[string]interface{
 		}
 	}
 	return false, nil
+}
+
+// redactParams removes sensitive keys from parameters
+func redactParams(params map[string]interface{}, keys []string) map[string]interface{} {
+	redacted := make(map[string]interface{})
+	for k, v := range params {
+		shouldRedact := false
+		for _, key := range keys {
+			if k == key {
+				shouldRedact = true
+				break
+			}
+		}
+		if shouldRedact {
+			redacted[k] = "[REDACTED]"
+		} else {
+			redacted[k] = v
+		}
+	}
+	return redacted
+}
+
+// handleRekey handles key rotation requests
+func (a *AELProxy) handleRekey(w http.ResponseWriter, r *http.Request) {
+	oldPubKey, newPubKey, err := a.worker.GetSigner().RotateKey(".ael_key")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to rotate key: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("KEY ROTATION SUCCESSFUL")
+	log.Printf("Old Public Key: %s", oldPubKey)
+	log.Printf("New Public Key: %s", newPubKey)
+
+	fmt.Fprintf(w, "Key rotated successfully\nOld: %s\nNew: %s", oldPubKey, newPubKey)
 }
 
 // handleApprove handles approval requests from the CLI

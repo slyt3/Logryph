@@ -29,13 +29,13 @@ func TestStats(t *testing.T) {
 
 	// Create some events
 	// 1. genesis (seq 0) - auto created by InsertRun in production but here we test InsertEvent
-	_ = db.InsertEvent("e0", runID, 0, now, "system", "genesis", "ael:init", "{}", "{}", "", "", "", "", "000", "h0", "s0")
+	_ = db.InsertEvent("e0", runID, 0, now, "system", "genesis", "ael:init", "{}", "{}", "", "", "", "", "", "000", "h0", "s0")
 	// 2. tool call (low risk)
-	_ = db.InsertEvent("e1", runID, 1, now, "agent", "tool_call", "mcp:list_tools", "{}", "{}", "", "", "p1", "low", "h0", "h1", "s1")
+	_ = db.InsertEvent("e1", runID, 1, now, "agent", "tool_call", "mcp:list_tools", "{}", "{}", "", "", "", "p1", "low", "h0", "h1", "s1")
 	// 3. tool call (high risk)
-	_ = db.InsertEvent("e2", runID, 2, now, "agent", "tool_call", "aws:ec2:terminate", "{}", "{}", "", "", "p2", "high", "h1", "h2", "s2")
+	_ = db.InsertEvent("e2", runID, 2, now, "agent", "tool_call", "aws:ec2:terminate", "{}", "{}", "", "", "", "p2", "high", "h1", "h2", "s2")
 	// 4. blocked event
-	_ = db.InsertEvent("e3", runID, 3, now, "agent", "blocked", "aws:ec2:terminate", "{}", "{}", "", "", "p2", "high", "h2", "h3", "s3")
+	_ = db.InsertEvent("e3", runID, 3, now, "agent", "blocked", "aws:ec2:terminate", "{}", "{}", "", "", "", "p2", "high", "h2", "h3", "s3")
 
 	// Test GetRunStats
 	stats, err := db.GetRunStats(runID)

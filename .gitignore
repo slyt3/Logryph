@@ -6,6 +6,11 @@
 
 # Build artifacts
 ael
+ael-cli
+ael-proxy
+
+# Specification
+AEL_SPEC.txt
 
 # Go build cache
 *.test

@@ -57,6 +57,26 @@ func (s *Signer) GetPublicKey() string {
 	return hex.EncodeToString(s.publicKey)
 }
 
+// RotateKey generates a new keypair and saves it to the specified path
+func (s *Signer) RotateKey(keyPath string) (oldPubKey, newPubKey string, err error) {
+	oldPubKey = s.GetPublicKey()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", "", fmt.Errorf("generating new keypair: %w", err)
+	}
+
+	if err := savePrivateKey(keyPath, priv); err != nil {
+		return "", "", fmt.Errorf("saving rotated key: %w", err)
+	}
+
+	s.privateKey = priv
+	s.publicKey = pub
+	newPubKey = s.GetPublicKey()
+
+	return oldPubKey, newPubKey, nil
+}
+
 // VerifySignature verifies a signature against a hash
 func (s *Signer) VerifySignature(hash, signatureHex string) bool {
 	signature, err := hex.DecodeString(signatureHex)

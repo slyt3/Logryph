@@ -72,7 +72,7 @@ func TestDB(t *testing.T) {
 	timestamp := time.Now().Format(time.RFC3339Nano)
 	err = db.InsertEvent(
 		"event-1", "run-1", 1, timestamp,
-		"agent", "tool_call", "mcp:list_tools", `{"foo":"bar"}`, "{}", "", "", "", "",
+		"agent", "tool_call", "mcp:list_tools", `{"foo":"bar"}`, "{}", "", "", "", "", "",
 		"genesis-hash", "hash-1", "sig-1",
 	)
 	if err != nil {

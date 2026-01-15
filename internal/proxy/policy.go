@@ -29,6 +29,7 @@ type PolicyRule struct {
 	ProofOfRefusal bool                   `yaml:"proof_of_refusal"`
 	LogLevel       string                 `yaml:"log_level,omitempty"`
 	Conditions     map[string]interface{} `yaml:"conditions,omitempty"`
+	Redact         []string               `yaml:"redact,omitempty"` // List of param keys to redact
 }
 
 // LoadPolicy loads the ael-policy.yaml file

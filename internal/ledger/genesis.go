@@ -47,6 +47,7 @@ func CreateGenesisBlock(db *DB, signer *crypto.Signer, agentName string) (string
 		"response":   genesisEvent.Response,
 		"task_id":    genesisEvent.TaskID,
 		"task_state": genesisEvent.TaskState,
+		"parent_id":  genesisEvent.ParentID,
 		"policy_id":  genesisEvent.PolicyID,
 		"risk_level": genesisEvent.RiskLevel,
 	}
@@ -96,6 +97,7 @@ func insertEvent(db *DB, event proxy.Event) error {
 		responseJSON,
 		event.TaskID,
 		event.TaskState,
+		event.ParentID,
 		event.PolicyID,
 		event.RiskLevel,
 		event.PrevHash,
