@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yourname/vouch/internal/assert"
 	"github.com/yourname/vouch/internal/crypto"
 	"github.com/yourname/vouch/internal/proxy"
 )
@@ -18,6 +19,9 @@ type VerificationResult struct {
 
 // VerifyChain validates the entire event chain for a given run
 func VerifyChain(db *DB, runID string, signer *crypto.Signer) (*VerificationResult, error) {
+	if err := assert.Check(runID != "", "runID must not be empty"); err != nil {
+		return nil, err
+	}
 	result := &VerificationResult{
 		Valid: true,
 	}
@@ -62,12 +66,18 @@ func VerifyChain(db *DB, runID string, signer *crypto.Signer) (*VerificationResu
 
 // VerifyEvent validates a single event's hash and signature
 func VerifyEvent(event *proxy.Event, signer *crypto.Signer) error {
+	// Safety Assertion: Check signature before hash verification
+	if err := assert.Check(event.Signature != "", "event signature must not be empty", "id", event.ID); err != nil {
+		return err
+	}
+	// 4. Calculate hash using normalized payload and JCS
+	tsStr := event.Timestamp.Format(time.RFC3339Nano)
 	// Recalculate the hash
 	payload := map[string]interface{}{
 		"id":         event.ID,
 		"run_id":     event.RunID,
 		"seq_index":  event.SeqIndex,
-		"timestamp":  event.Timestamp.Format(time.RFC3339Nano),
+		"timestamp":  tsStr, // Use the formatted string
 		"actor":      event.Actor,
 		"event_type": event.EventType,
 		"method":     event.Method,

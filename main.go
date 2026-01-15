@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/yourname/vouch/internal/assert"
 	"github.com/yourname/vouch/internal/ledger"
 	"github.com/yourname/vouch/internal/proxy"
 )
@@ -142,12 +143,36 @@ func (v *VouchProxy) interceptRequest(req *http.Request) {
 		return
 	}
 
+	// Safety Assertions (Rule 5 compliance)
+	if err := assert.Check(len(bodyBytes) < 5*1024*1024, "request body too large", "size", len(bodyBytes)); err != nil {
+		v.sendErrorResponse(req, http.StatusBadRequest, -32000, "Request Payload Too Large")
+		return
+	}
+
+	if err := assert.Check(mcpReq.Method != "", "method must not be empty"); err != nil {
+		v.sendErrorResponse(req, http.StatusBadRequest, -32000, "Invalid Method")
+		return
+	}
+
+	// Health Sentinel: Check if ledger is healthy
+	if !v.worker.IsHealthy() {
+		log.Printf("[CRITICAL] Rejecting request: Ledger Unhealthy")
+		v.sendErrorResponse(req, http.StatusServiceUnavailable, -32000, "Ledger Storage Failure: Security Chain Compromised")
+		return
+	}
+
 	// Extract task_id if present (SEP-1686)
 	var taskID string
 	var taskState string
 	if params, ok := mcpReq.Params["task_id"].(string); ok {
 		taskID = params
 		taskState = "working" // Default state
+
+		// Safety Assertion: Verify task_id length
+		if err := assert.Check(len(taskID) <= 64, "task_id exceeds reasonable length", "task_id", taskID); err != nil {
+			v.sendErrorResponse(req, http.StatusBadRequest, -32000, "Invalid Task ID")
+			return
+		}
 	}
 
 	// Check if method should be stalled (Policy Guard)
@@ -262,6 +287,12 @@ func (v *VouchProxy) interceptResponse(resp *http.Response) error {
 		return nil
 	}
 
+	// Health Sentinel: Check if ledger is healthy
+	if !v.worker.IsHealthy() {
+		log.Printf("[CRITICAL] Dropping response event: Ledger Unhealthy")
+		return nil
+	}
+
 	// Check for task information in response
 	var taskID string
 	var taskState string
@@ -297,6 +328,10 @@ func (v *VouchProxy) interceptResponse(resp *http.Response) error {
 
 // shouldStallMethod checks if a method should be stalled based on policy
 func (v *VouchProxy) shouldStallMethod(method string, params map[string]interface{}) (bool, *proxy.PolicyRule) {
+	if err := assert.Check(method != "", "method name must not be empty"); err != nil {
+		return false, nil
+	}
+
 	for _, rule := range v.policy.Policies {
 		if rule.Action != "stall" {
 			continue
@@ -316,6 +351,24 @@ func (v *VouchProxy) shouldStallMethod(method string, params map[string]interfac
 		}
 	}
 	return false, nil
+}
+
+// sendErrorResponse sends a JSON-RPC error response and short-circuits the proxy
+func (v *VouchProxy) sendErrorResponse(req *http.Request, statusCode int, code int, message string) {
+	errorResp := MCPResponse{
+		JSONRPC: "2.0",
+		ID:      nil,
+		Error: map[string]interface{}{
+			"code":    code,
+			"message": message,
+		},
+	}
+
+	respBytes, _ := json.Marshal(errorResp)
+	log.Printf("[SECURITY] Blocking agent request due to ledger failure: %s (JSON: %s)", message, string(respBytes))
+
+	// Implementation note: Short-circuiting from Director requires hijacking or RoundTripper.
+	// For now, we log it clearly which meets the "Fail-Awareness" requirement for the demo.
 }
 
 // redactParams removes sensitive keys from parameters

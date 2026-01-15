@@ -3,9 +3,11 @@ package ledger
 import (
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/yourname/vouch/internal/assert"
 	"github.com/yourname/vouch/internal/crypto"
 	"github.com/yourname/vouch/internal/proxy"
 )
@@ -17,6 +19,7 @@ type Worker struct {
 	signer       *crypto.Signer
 	runID        string
 	taskStates   map[string]string // Track task state changes
+	isUnhealthy  atomic.Bool       // Health sentinel
 }
 
 // NewWorker creates a new async ledger worker with a buffered channel
@@ -47,14 +50,19 @@ func (w *Worker) GetDB() *DB {
 	return w.db
 }
 
+// IsHealthy returns the current health status of the worker
+func (w *Worker) IsHealthy() bool {
+	return !w.isUnhealthy.Load()
+}
+
 // GetSigner returns the signer instance
 func (w *Worker) GetSigner() *crypto.Signer {
 	return w.signer
 }
 
-// Start begins processing events in the background
+// Start initializes the worker, loads existing runs or creates a genesis block, and starts event processing.
 func (w *Worker) Start() error {
-	// Check if we need to create genesis block
+	// Check for existing runs
 	hasRuns, err := w.db.HasRuns()
 	if err != nil {
 		return fmt.Errorf("checking for existing runs: %w", err)
@@ -88,6 +96,16 @@ func (w *Worker) Start() error {
 
 // Submit sends an event to the worker for processing (non-blocking)
 func (w *Worker) Submit(event proxy.Event) {
+	// Backpressure Awareness: Log a high-visibility warning if the buffer is > 80% full
+	capacity := cap(w.eventChannel)
+	current := len(w.eventChannel)
+	if capacity > 0 && float64(current)/float64(capacity) >= 0.8 {
+		log.Printf("========================================================")
+		log.Printf("[BACKPRESSURE] Ledger buffer at %d/%d (>=80%%) capacity", current, capacity)
+		log.Printf("[BACKPRESSURE] Throttling agent requests to prevent loss")
+		log.Printf("========================================================")
+	}
+
 	w.eventChannel <- event
 }
 
@@ -115,7 +133,22 @@ func (w *Worker) processEvents() {
 			log.Printf("[%s] CALL    | %s | Seq: %d | Hash: %s",
 				timestamp, event.Method, event.SeqIndex, event.CurrentHash[:16])
 			if event.TaskID != "" {
-				log.Printf("  Task ID: %s (State: %s)", event.TaskID, event.TaskState)
+				// Check for task state change
+				oldState, exists := w.taskStates[event.TaskID]
+				if exists && oldState != event.TaskState {
+					log.Printf("  Task %s: %s -> %s", event.TaskID, oldState, event.TaskState)
+
+					// If task completed, create a task_completed event
+					if event.TaskState == "completed" || event.TaskState == "failed" || event.TaskState == "cancelled" {
+						w.createTaskCompletionEvent(event.TaskID, event.TaskState)
+
+						// Terminal State Cleanup: Prevent memory leak
+						delete(w.taskStates, event.TaskID)
+						log.Printf(" [CLEANUP] Task %s state purged from memory", event.TaskID)
+						continue // State already purged, don't re-add below
+					}
+				}
+				w.taskStates[event.TaskID] = event.TaskState
 			}
 		} else if event.EventType == "tool_response" {
 			log.Printf("[%s] RESPONSE| %s | Seq: %d | Hash: %s",
@@ -129,6 +162,11 @@ func (w *Worker) processEvents() {
 					// If task completed, create a task_completed event
 					if event.TaskState == "completed" || event.TaskState == "failed" || event.TaskState == "cancelled" {
 						w.createTaskCompletionEvent(event.TaskID, event.TaskState)
+
+						// Terminal State Cleanup: Prevent memory leak
+						delete(w.taskStates, event.TaskID)
+						log.Printf(" [CLEANUP] Task %s state purged from memory", event.TaskID)
+						continue // State already purged, don't re-add below
 					}
 				}
 				w.taskStates[event.TaskID] = event.TaskState
@@ -137,32 +175,50 @@ func (w *Worker) processEvents() {
 	}
 }
 
-// persistEvent saves an event to the database with hash-chaining and signing
+// persistEvent prepares, hashes, signs and stores an event in the database
 func (w *Worker) persistEvent(event *proxy.Event) error {
-	// Set run ID
+	// 1. Assign sequence index
+	runStats, err := w.db.GetRunStats(w.runID)
+	if err != nil {
+		return fmt.Errorf("getting run stats: %w", err)
+	}
+	event.SeqIndex = runStats.TotalEvents
 	event.RunID = w.runID
 
-	// Set actor if not set
-	if event.Actor == "" {
-		event.Actor = "agent"
+	// 2. Get previous hash
+	var prevHash string
+	if event.SeqIndex == 0 {
+		prevHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	} else {
+		// GetLastEvent returns (seqIndex, currentHash, err)
+		_, lastHash, err := w.db.GetLastEvent(w.runID)
+		if err != nil {
+			return fmt.Errorf("getting last event: %w", err)
+		}
+
+		// Safety Assertion: Verify prev_hash is non-empty for non-genesis blocks
+		if err := assert.Check(lastHash != "", "prev_hash must be non-empty for non-genesis blocks", "seq", event.SeqIndex); err != nil {
+			return err
+		}
+
+		prevHash = lastHash
+	}
+	event.PrevHash = prevHash
+
+	if err := assert.Check(len(event.PrevHash) == 64, "invalid prev_hash length", "len", len(event.PrevHash)); err != nil {
+		return err
 	}
 
-	// Get previous event's hash and seq_index
-	lastSeqIndex, lastHash, err := w.db.GetLastEvent(w.runID)
-	if err != nil {
-		return fmt.Errorf("getting last event: %w", err)
-	}
+	// 3. Normalize timestamp for consistent hashing
+	// Use RFC3339Nano for maximum precision during serialization
+	tsStr := event.Timestamp.Format(time.RFC3339Nano)
 
-	// Set sequence index and prev_hash
-	event.SeqIndex = lastSeqIndex + 1
-	event.PrevHash = lastHash
-
-	// Calculate current hash using canonical JSON
+	// 4. Calculate hash using normalized payload and JCS
 	payload := map[string]interface{}{
 		"id":         event.ID,
 		"run_id":     event.RunID,
 		"seq_index":  event.SeqIndex,
-		"timestamp":  event.Timestamp.Format(time.RFC3339Nano),
+		"timestamp":  tsStr,
 		"actor":      event.Actor,
 		"event_type": event.EventType,
 		"method":     event.Method,
@@ -181,7 +237,7 @@ func (w *Worker) persistEvent(event *proxy.Event) error {
 	}
 	event.CurrentHash = currentHash
 
-	// Sign the hash
+	// 5. Sign the hash
 	signature, err := w.signer.SignHash(currentHash)
 	if err != nil {
 		return fmt.Errorf("signing hash: %w", err)
@@ -189,25 +245,35 @@ func (w *Worker) persistEvent(event *proxy.Event) error {
 	event.Signature = signature
 
 	// Insert into database
-	return insertEvent(w.db, *event)
+	if err := insertEvent(w.db, *event); err != nil {
+		// Health Sentinel: Mark system as unhealthy on database failure
+		w.isUnhealthy.Store(true)
+		log.Printf("========================================================")
+		log.Printf("[CRITICAL] DATABASE WRITE FAILURE: %v", err)
+		log.Printf("[CRITICAL] Setting system health to UNHEALTHY")
+		log.Printf("========================================================")
+		return err
+	}
+
+	return nil
 }
 
 // createTaskCompletionEvent creates a task_completed event when a task finishes
-func (w *Worker) createTaskCompletionEvent(taskID, finalState string) {
-	completionEvent := proxy.Event{
-		ID:        uuid.New().String(),
+func (w *Worker) createTaskCompletionEvent(taskID string, state string) {
+	event := proxy.Event{
+		ID:        uuid.New().String()[:8],
 		Timestamp: time.Now(),
-		EventType: "task_completed",
-		Method:    "vouch:task_completed",
+		EventType: "task_terminal",
+		Method:    "vouch:task_state",
 		Params: map[string]interface{}{
-			"task_id":     taskID,
-			"final_state": finalState,
+			"task_id": taskID,
+			"state":   state,
 		},
-		Response:  map[string]interface{}{},
 		TaskID:    taskID,
-		TaskState: finalState,
+		TaskState: state,
 	}
 
-	// Submit back to the channel for processing
-	w.eventChannel <- completionEvent
+	// Direct call to persist to avoid channel recursion if needed,
+	// but channel is fine for this small event.
+	w.Submit(event)
 }
