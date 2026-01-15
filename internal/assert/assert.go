@@ -4,6 +4,7 @@
 package assert
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"runtime"
@@ -33,5 +34,5 @@ func Check(condition bool, msg string, fields ...interface{}) error {
 	errMsg := fmt.Sprintf("[ASSERTION FAILURE] %s:%d: %s%s", file, line, msg, context)
 	log.Println(errMsg)
 
-	return fmt.Errorf(errMsg)
+	return errors.New(errMsg)
 }
