@@ -44,7 +44,7 @@ func main() {
 	// Create target URL
 	targetURL, err := url.Parse("http://localhost:8080")
 	if err != nil {
-		log.Fatalf("❌ Failed to parse target URL: %v", err)
+		log.Fatalf("Failed to parse target URL: %v", err)
 	}
 
 	// Create reverse proxy
@@ -92,7 +92,7 @@ func (a *AELProxy) interceptRequest(req *http.Request) {
 	// Read body
 	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
-		log.Printf("⚠️  Failed to read request body: %v", err)
+		log.Printf("Failed to read request body: %v", err)
 		return
 	}
 	req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
