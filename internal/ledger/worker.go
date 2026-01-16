@@ -16,7 +16,7 @@ import (
 type Worker struct {
 	ringBuffer  *ring.Buffer[*models.Event]
 	signalChan  chan struct{} // Signal to wake up processor
-	db          *DB
+	db          EventRepository
 	signer      *crypto.Signer
 	runID       string
 	processor   *EventProcessor
@@ -61,7 +61,7 @@ func NewWorker(bufferSize int, dbPath, keyPath string) (*Worker, error) {
 	}, nil
 }
 
-func (w *Worker) GetDB() *DB {
+func (w *Worker) GetDB() EventRepository {
 	return w.db
 }
 

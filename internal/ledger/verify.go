@@ -18,7 +18,7 @@ type VerificationResult struct {
 }
 
 // VerifyChain validates the entire event chain for a given run
-func VerifyChain(db *DB, runID string, signer *crypto.Signer) (*VerificationResult, error) {
+func VerifyChain(db EventRepository, runID string, signer *crypto.Signer) (*VerificationResult, error) {
 	if err := assert.Check(runID != "", "runID must not be empty"); err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func VerifyChain(db *DB, runID string, signer *crypto.Signer) (*VerificationResu
 
 	// Get all events for this run, ordered by sequence
 	events, err := db.GetAllEvents(runID)
-	if err := assert.Check(err == nil, "database query failed: %v", err); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}
 
@@ -42,28 +42,28 @@ func VerifyChain(db *DB, runID string, signer *crypto.Signer) (*VerificationResu
 
 	if len(events) == 0 {
 		result.Valid = false
-		result.ErrorMessage = "No events found for run"
+		result.ErrorMessage = ErrNoEvents.Error()
 		return result, nil
 	}
 
 	// Verify each event
 	for i, event := range events {
-		if err := VerifyEvent(&event, signer); err != nil {
-			result.Valid = false
-			result.ErrorMessage = fmt.Sprintf("Event %d (seq %d) failed verification: %v", i, event.SeqIndex, err)
-			result.FailedAtSeq = event.SeqIndex
-			return result, nil
-		}
-
 		// Verify hash chain linkage (except for genesis)
 		if i > 0 {
 			prevEvent := events[i-1]
 			if event.PrevHash != prevEvent.CurrentHash {
 				result.Valid = false
-				result.ErrorMessage = fmt.Sprintf("Hash chain broken at seq %d: prev_hash mismatch", event.SeqIndex)
+				result.ErrorMessage = ErrChainTampered.Error()
 				result.FailedAtSeq = event.SeqIndex
 				return result, nil
 			}
+		}
+
+		if err := VerifyEvent(&event, signer); err != nil {
+			result.Valid = false
+			result.ErrorMessage = fmt.Sprintf("Event %d (seq %d) failed verification: %v", i, event.SeqIndex, err)
+			result.FailedAtSeq = event.SeqIndex
+			return result, nil
 		}
 	}
 
@@ -106,13 +106,13 @@ func VerifyEvent(event *models.Event, signer *crypto.Signer) error {
 
 	// Verify hash matches
 	if calculatedHash != event.CurrentHash {
-		return fmt.Errorf("hash mismatch: expected %s, got %s", event.CurrentHash, calculatedHash)
+		return ErrHashMismatch
 	}
 
 	// Verify signature
 	isValid := signer.VerifySignature(calculatedHash, event.Signature)
-	if err := assert.Check(isValid, "signature verification failed: id=%s hash=%s", event.ID, calculatedHash); err != nil {
-		return fmt.Errorf("signature verification failed")
+	if !isValid {
+		return ErrInvalidSignature
 	}
 
 	return nil

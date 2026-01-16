@@ -33,6 +33,8 @@ func main() {
 		commands.RekeyCommand()
 	case "trace":
 		commands.TraceCommand()
+	case "replay":
+		commands.ReplayCommand()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -51,5 +53,6 @@ func printUsage() {
 	fmt.Println("  vouch risk                List all high-risk events")
 	fmt.Println("  vouch export <file.zip>   Export the current run as an Evidence Bag (ZIP)")
 	fmt.Println("  vouch trace <task-id>     Visualize the forensic timeline of a task")
+	fmt.Println("  vouch replay <id>         Re-execute a tool call to reproduce an incident")
 	fmt.Println("  vouch rekey               Rotate the Ed25519 signing keys")
 }

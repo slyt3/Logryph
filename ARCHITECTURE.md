@@ -23,7 +23,8 @@ graph TD
     WORKER --> PROCESSOR[internal/ledger/processor]
     WORKER --> RING[internal/ring]
     
-    PROCESSOR --> DB[internal/ledger/db]
+    PROCESSOR --> REPO["EventRepository (Interface)"]
+    REPO --> DB[internal/ledger/db]
     PROCESSOR --> CRYPTO[internal/crypto]
     PROCESSOR --> MODELS[internal/models]
     
@@ -57,7 +58,7 @@ graph TD
 *   **Role**: Post-incident analysis and verification.
 *   **Commands**:
     *   `verify`: Validates the cryptographic integrity of the entire chain.
-    *   `trace`: Reconstructs causality trees for agent tasks.
+    *   `trace`: Reconstructs causality trees for agent tasks (supports HTML export).
     *   `export`: Creates an Evidence Bag (ZIP) for legal handover.
 
 ## Data Flow

@@ -1,18 +1,16 @@
 package ledger
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/slyt3/Vouch/internal/crypto"
-	"github.com/slyt3/Vouch/internal/models"
 	"github.com/slyt3/Vouch/internal/pool"
 )
 
 // CreateGenesisBlock creates the initial genesis event for a new run
-func CreateGenesisBlock(db *DB, signer *crypto.Signer, agentName string) (string, error) {
+func CreateGenesisBlock(db EventRepository, signer *crypto.Signer, agentName string) (string, error) {
 	// Generate run ID (UUIDv7 for time-ordering)
 	runID := uuid.New().String()
 
@@ -83,43 +81,9 @@ func CreateGenesisBlock(db *DB, signer *crypto.Signer, agentName string) (string
 	}
 
 	// Insert genesis event
-	if err := insertEvent(db, genesisEvent); err != nil {
+	if err := db.StoreEvent(genesisEvent); err != nil {
 		return "", fmt.Errorf("inserting genesis event: %w", err)
 	}
 
 	return runID, nil
-}
-
-// insertEvent is a helper to insert an event into the database
-func insertEvent(db *DB, event *models.Event) error {
-	paramsBytes, err := json.Marshal(event.Params)
-	if err != nil {
-		return fmt.Errorf("marshaling params: %w", err)
-	}
-	responseBytes, err := json.Marshal(event.Response)
-	if err != nil {
-		return fmt.Errorf("marshaling response: %w", err)
-	}
-	paramsJSON := string(paramsBytes)
-	responseJSON := string(responseBytes)
-
-	return db.InsertEvent(
-		event.ID,
-		event.RunID,
-		event.SeqIndex,
-		event.Timestamp.Format(time.RFC3339Nano),
-		event.Actor,
-		event.EventType,
-		event.Method,
-		paramsJSON,
-		responseJSON,
-		event.TaskID,
-		event.TaskState,
-		event.ParentID,
-		event.PolicyID,
-		event.RiskLevel,
-		event.PrevHash,
-		event.CurrentHash,
-		event.Signature,
-	)
 }

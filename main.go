@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	log.Println("Vouch (Agent Analytics & Safety) - Starting Monolithic -> Modular transition")
+	log.Println("Vouch: The AI Agent Flight Recorder - Forensic Intelligence Engine Starting")
 
 	// 1. Load Observer Rules
 	obsEngine, err := observer.NewObserverEngine("vouch-policy.yaml")

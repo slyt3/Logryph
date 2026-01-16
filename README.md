@@ -1,6 +1,10 @@
-# Vouch: The AI Agent Black Box
+# Vouch: The AI Agent Flight Recorder
 
-Vouch is a safety-critical flight recorder for AI agents. It intercepts every tool interaction, signs it cryptographically, and persists an immutable audit trail that prevents agents from deleting their tracks if compromised.
+> **"If it isn't in the ledger, it didn't happen."**
+
+Vouch is a **forensic-grade flight recorder** for autonomous AI agents. It passively intercepts tool execution, cryptographically signs every action, and persists an immutable, tamper-evident audit trail.
+
+Designed for **Incident Response**, **Legal Defensibility**, and **NASA Power of Ten** safety compliance.
 
 ---
 
@@ -10,159 +14,134 @@ Vouch is a safety-critical flight recorder for AI agents. It intercepts every to
 
 ---
 
-## The Problem
-As AI agents evolve from simple chat-bots to autonomous action-bots, they are given the power to delete files, move money, and modify production infrastructure. Standard logging is fundamentally broken for this new era:
-1. **Lacks Integrity**: If an agent is compromised, it can delete the very logs that explain its behavior.
-2. **Missing Context**: Standard logs capture what happened but miss the raw payload and cryptographic proof needed for legal forensics.
-3. **No Safety-Brake**: Traditional logs are reactive. They tell you why the system died after the agent deleted the production database.
+## The Problem: "The Black Box"
+When an autonomous agent deletes a production database or executes an unauthorized trade, standard logs are insufficient:
+1.  **Mutable**: A compromised agent (or rogue admin) can delete logs to cover their tracks.
+2.  **Context-Poor**: Standard logs show *what* happened, but not the *reasoning* or the *raw payload*.
+3.  **Legally Weak**: Text files have no chain of custody. They are inadmissible as primary evidence in strict forensic environments.
 
----
+## The Solution: "The Glass Box"
+Vouch acts as a **transparent proxy**. It sits between your agent (Claude, GPT, AutoGPT) and its tools. It does not block; it records.
 
-## The Solution
-Vouch acts as a transparent interceptor. It sits between your agent (Claude, GPT, AutoGPT) and its tools (CLI, SQL, APIs). Before an action is executed, Vouch records it, verifies it against policy, and signs it.
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Vouch as Vouch (Recorder)
+    participant Tool as API/Tool
+    participant DB as Immutable Ledger
 
-```text
- [ AI Agent ] <--- (Tool Call) ---> [ Vouch Proxy ] <--- (Execution) ---> [ Tools / APIs ]
-                                         |
-                                 [ Signed Ledger ]
-                                         |
-                                 [ SHA-256 Chain ]
+    Agent->>Vouch: POST /execute (Tool Call)
+    Vouch->>DB: 1. Sequencer Assigns ID (Monotonic)
+    Vouch->>DB: 2. Calculate SHA-256 Hash (Prev + Curr)
+    Vouch->>DB: 3. Sign with Ed25519 Key
+    Vouch->>DB: 4. Persist (WAL Mode)
+    Vouch->>Tool: Forward Request
+    Tool-->>Vouch: Response
+    Vouch->>Agent: Return Response
+    Vouch->>DB: 5. Record Response & Latency
 ```
 
 ### Key Features
-*   Immutable Ledger: Append-only SQLite store with SHA-256 hash chaining (blockchain-style).
-*   Human-in-the-Loop: Stall risky actions (e.g., db.drop) until a human verifies and approves.
-*   Cryptographic Proof: Every event is signed with Ed25519 (Hardware-backed support available).
-*   Zero-Overhead: High-performance memory pooling ensures < 1.8ms latency impact.
-*   Forensic CLI: Reconstruct the agent's complex reasoning chain and link task dependencies.
+*   **Immutable Ledger**: Append-only SQLite store with SHA-256 hash chaining (Merkle-like structure).
+*   **Cryptographic Identity**: Every event is signed with a high-entropy Ed25519 key unique to the recorder instance.
+*   **Passive & Fast**: Zero-blocking logic. < 2ms latency overhead using zero-allocation memory pools.
+*   **Legal Admissibility**: Designed to meet [Federal Rules of Evidence 902(13)](https://www.law.cornell.edu/rules/fre/rule_902) standards for self-authenticating records.
+*   **Global Anchoring**: Periodically anchors the ledger state to the Bitcoin blockchain (via Blockstream) for external proof of time.
 
 ---
 
-## Quick Start (Demo)
+## Quick Start
 
 ### 1. Installation
 ```bash
 go install github.com/slyt3/Vouch@latest
 ```
 
-### 2. Configure Safety Policies
-Define which tools are risky in vouch-policy.yaml.
+### 2. Start the Recorder
+Vouch runs as a sidecar proxy.
+```bash
+# Start listening on port 9999, forwarding to your tool server on 8080
+vouch-proxy --target http://localhost:8080 --port 9999
+```
+
+### 3. Connect Your Agent
+Point your LLM or Agent framework to the Vouch proxy instead of the direct tool URL.
+
+**Python (LangChain / OpenAI)**
+```python
+# Route traffic through Vouch
+import os
+os.environ["OPENAI_BASE_URL"] = "http://localhost:9999/v1"
+```
+
+### 4. Forensic Analysis
+When an incident occurs, use the CLI to investigate.
+
+**Verify Integrity**
+Check if the log file has been tampered with since creation.
+```bash
+vouch verify
+# > ✓ Chain valid. 14,203 events verified.
+# > ✓ Signatures valid.
+# > ✓ Bitcoin Anchor confirmed (Block #824100).
+```
+
+**Trace Agent Reasoning**
+Reconstruct the execution tree for a specific task.
+```bash
+vouch trace <task-id>
+```
+
+**Export Evidence**
+Create a cryptographically sealed zip file for legal/compliance handover.
+```bash
+vouch export evidence_bag.zip
+```
+
+---
+
+## Architecture
+
+Vouch is built on a **Modular Hexagonal Architecture** to ensure robustness and testability.
+
+*   **`internal/ledger`**: The core cryptographic engine. Handles hashing, signing, and SQLite persistence.
+*   **`internal/observer`**: Passive rule engine. Tags events with risk levels (Low, High, Critical) based on `vouch-policy.yaml`.
+*   **`internal/interceptor`**: High-performance HTTP proxy logic.
+*   **`internal/ring`**: Fixed-size ring buffers for async IO (decoupling recording from forwarding).
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system diagrams.
+
+---
+
+## Configuration (`vouch-policy.yaml`)
+Vouch is passive, but it *tags* events based on risk. This aids in post-incident filtering.
+
 ```yaml
+version: "2026.1"
+defaults:
+  retention_days: 90
+  signing_enabled: true
+
 policies:
-  - id: "prevent-deletion"
-    match_methods: ["os.remove", "db.drop_root"]
-    action: "stall" # Pause the agent and wait for human
+  - id: "critical-infrastructure"
+    match_methods: ["aws:delete_instance", "db:drop_table"]
     risk_level: "critical"
-```
-
-### 3. Start the Proxy
-```bash
-vouch-proxy --upstream https://api.anthropic.com --port 9999
-```
-
-### 4. Interactive Approval
-If your agent tries to delete something, Vouch will stop it. You approve it here:
-```bash
-vouch-cli approve <event_id>
-```
-
----
-
-## How It Works
-
-### 1. Interception Layer
-Vouch implements a Transparent Proxy using Go's httputil.ReverseProxy. It synchronously inspects incoming JSON-RPC traffic. It matches the method against your safety policy before the request ever hits the tool.
-
-### 2. Immutable Ledger
-Events are stored in a SHA-256 Linked Chain. Every event (Block N) includes the hash of (Block N-1). This ensures that even a single-bit modification to historical logs will invalidate the entire cryptographic chain.
-
-### 3. Policy Engine
-The engine evaluates requests in real-time. Action types include:
-- allow: Log and forward immediately.
-- stall: Block request, alert admin, and wait for cryptographic approval.
-- redact: Scrub PII (emails, keys) before persisting to the ledger.
-
----
-
-## Configuration
-The vouch-policy.yaml allows granular control over agent capabilities.
-
-```yaml
-# Safety Core Configuration
-policies:
-  - id: "audit-all"
-    match_methods: ["*"] # Log everything
-    action: "allow"
     
-  - id: "protect-database"
-    match_methods: ["sql.execute", "db.query"]
-    action: "stall"
-    risk_level: "critical"
+  - id: "financial-ops"
+    match_methods: ["stripe:refund", "bank:transfer"]
+    risk_level: "high"
 ```
 
 ---
 
-## Verification and Forensics
-
-```bash
-# Verify the entire cryptographic chain integrity
-vouch-cli verify
-
-# View real-time statistics
-vouch-cli stats
-
-# Export the forensic audit trail for legal review
-vouch-cli export --format json --output audit_trail.json
-```
-
----
-
-## Performance
-Optimized for zero-impact on agent latency.
-- Latency Overhead: < 1.8ms per request (local loopback).
-- Throughput: ~5,200 events/sec (disk-limited).
-- Memory Footprint: < 18MB RSS.
-
----
-
-## Integration Examples
-
-### Claude / Anthropic
-```python
-# Simply route your tool calls through the Vouch Proxy
-client = anthropic.Client(api_key="...", base_url="http://localhost:9999")
-```
-
-### LangChain
-```python
-from langchain_openai import ChatOpenAI
-# secure your agent with one line
-llm = ChatOpenAI(openai_api_base="http://localhost:9999/v1")
-```
-
----
-
-
-## Roadmap
-- [ ] WebAssembly (Wasm) policy plugins
-- [ ] Multi-agent orchestration and linked chains
-- [ ] Behavioral anomaly detection (using local ML)
-- [ ] Decentralized ledger backup (IPFS/Arweave)
-
----
+## Development Status
+Vouch is currently in **v1.0 (Stable)**.
+*   [x] Core Ledger & Signing
+*   [x] Passive Interception
+*   [x] CLI Forensics (Trace, Verify, Export)
+*   [ ] Multi-node Consensus
+*   [x] HTML Report Generation
+*   [ ] PDF Report Generation
 
 ## License
-[Apache 2.0](LICENSE)
-
----
-
-## Citation
-If you use Vouch in your research or at your company:
-```bibtex
-@software{vouch2025,
-  title = {Vouch: Safety-Critical AI Agent Accountability},
-  author = {slyt3},
-  year = {2025},
-  url = {https://github.com/slyt3/Vouch}
-}
-```
+Apache 2.0

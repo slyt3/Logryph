@@ -11,6 +11,38 @@ import (
 	"github.com/slyt3/Vouch/internal/models"
 )
 
+// StoreEvent persists a models.Event to the ledger, unpacking it for the SQL query
+func (db *DB) StoreEvent(event *models.Event) error {
+	paramsBytes, err := json.Marshal(event.Params)
+	if err != nil {
+		return fmt.Errorf("marshaling params: %w", err)
+	}
+	responseBytes, err := json.Marshal(event.Response)
+	if err != nil {
+		return fmt.Errorf("marshaling response: %w", err)
+	}
+
+	return db.InsertEvent(
+		event.ID,
+		event.RunID,
+		event.SeqIndex,
+		event.Timestamp.Format(time.RFC3339Nano),
+		event.Actor,
+		event.EventType,
+		event.Method,
+		string(paramsBytes),
+		string(responseBytes),
+		event.TaskID,
+		event.TaskState,
+		event.ParentID,
+		event.PolicyID,
+		event.RiskLevel,
+		event.PrevHash,
+		event.CurrentHash,
+		event.Signature,
+	)
+}
+
 // InsertEvent inserts a new event into the ledger
 func (db *DB) InsertEvent(id, runID string, seqIndex uint64, timestamp, actor, eventType, method, params, response, taskID, taskState, parentID, policyID, riskLevel, prevHash, currentHash, signature string) error {
 	if err := assert.Check(id != "", "event id must not be empty"); err != nil {

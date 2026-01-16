@@ -14,13 +14,13 @@ import (
 
 // EventProcessor handles the logic for hashing, signing, and state tracking
 type EventProcessor struct {
-	db         *DB
+	db         EventRepository
 	signer     *crypto.Signer
 	runID      string
 	taskStates map[string]string
 }
 
-func NewEventProcessor(db *DB, signer *crypto.Signer, runID string) *EventProcessor {
+func NewEventProcessor(db EventRepository, signer *crypto.Signer, runID string) *EventProcessor {
 	return &EventProcessor{
 		db:         db,
 		signer:     signer,
@@ -151,7 +151,7 @@ func (p *EventProcessor) persistEvent(event *models.Event) error {
 	event.Signature = signature
 
 	// 4. Store
-	return insertEvent(p.db, event)
+	return p.db.StoreEvent(event)
 }
 
 func (p *EventProcessor) createTaskCompletionEvent(taskID string, state string) {

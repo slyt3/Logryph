@@ -23,14 +23,12 @@ type Config struct {
 
 // Rule represents a single policy rule
 type Rule struct {
-	ID             string                 `yaml:"id"`
-	MatchMethods   []string               `yaml:"match_methods"`
-	RiskLevel      string                 `yaml:"risk_level"`
-	Action         string                 `yaml:"action"` // "allow" | "stall"
-	ProofOfRefusal bool                   `yaml:"proof_of_refusal"`
-	LogLevel       string                 `yaml:"log_level,omitempty"`
-	Conditions     map[string]interface{} `yaml:"conditions,omitempty"`
-	Redact         []string               `yaml:"redact,omitempty"` // List of param keys to redact
+	ID           string                 `yaml:"id"`
+	MatchMethods []string               `yaml:"match_methods"`
+	RiskLevel    string                 `yaml:"risk_level"`
+	LogLevel     string                 `yaml:"log_level,omitempty"`
+	Conditions   map[string]interface{} `yaml:"conditions,omitempty"`
+	Redact       []string               `yaml:"redact,omitempty"` // List of param keys to redact
 }
 
 // ObserverEngine handles policy evaluation and enforcement

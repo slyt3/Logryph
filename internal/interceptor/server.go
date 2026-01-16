@@ -127,9 +127,9 @@ func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{
 					continue
 				}
 
-				action := PolicyAction(rule.Action)
-				if action == "" {
-					action = ActionAllow
+				action := ActionTag
+				if len(rule.Redact) > 0 {
+					action = ActionRedact
 				}
 
 				return action, &rule, nil

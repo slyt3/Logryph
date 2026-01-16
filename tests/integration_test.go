@@ -48,7 +48,6 @@ policies:
   - id: critical-infra
     match_methods: ["aws:ec2:launch"]
     risk_level: critical
-    action: stall
 `
 	_ = os.WriteFile(filepath.Join(tmpDir, "vouch-policy.yaml"), []byte(policyContent), 0644)
 
@@ -126,7 +125,7 @@ policies:
 		t.Errorf("Expected result in response 1")
 	}
 
-	// 6. Test stall and approval
+	// 6. Test Forensic Capture (critical risk)
 	req2 := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      2,
@@ -134,64 +133,36 @@ policies:
 		"params":  map[string]interface{}{"type": "t2.micro"},
 	}
 
-	// Start request in goroutine (it will stall)
-	respChan := make(chan map[string]interface{})
-	go func() {
-		resp, _ := sendRequest("http://localhost:9999", req2)
-		respChan <- resp
-	}()
+	// In passive mode, this returns IMMEDIATELY (no stall)
+	resp2, err := sendRequest("http://localhost:9999", req2)
+	if err != nil {
+		t.Fatalf("Request 2 failed: %v", err)
+	}
+	if resp2["result"] == nil {
+		t.Errorf("Expected result in response 2 (passive mode should not block)")
+	}
 
-	// Wait for stall to be logged and event to be visible in CLI
+	// Wait for async ledger write
 	time.Sleep(1 * time.Second)
 
-	// Use CLI to find blocked event
-	cliEventsCmd := exec.Command(cliPath, "events")
-	cliEventsCmd.Dir = tmpDir
-	out, _ := cliEventsCmd.CombinedOutput()
+	// 7. Verify recording and tagging via CLI
+	cliRiskCmd := exec.Command(cliPath, "risk")
+	cliRiskCmd.Dir = tmpDir
+	out, _ := cliRiskCmd.CombinedOutput()
+	fmt.Printf("[CLI RISK] %s\n", string(out))
 
-	// Find the event ID in output (very simple parser)
-	// Output looks like: [1] <event-id> | blocked | aws:ec2:launch
-	var eventID string
-	lines := bytes.Split(out, []byte("\n"))
-	for _, line := range lines {
-		if bytes.Contains(line, []byte("blocked")) && bytes.Contains(line, []byte("aws:ec2:launch")) {
-			parts := bytes.Fields(line)
-			if len(parts) >= 2 {
-				eventID = string(parts[1])
-				break
-			}
-		}
+	if !strings.Contains(strings.ToLower(string(out)), "critical") {
+		t.Errorf("Expected 'critical' risk tag for aws:ec2:launch in CLI output")
 	}
 
-	if eventID == "" {
-		t.Fatalf("Could not find blocked event in CLI output: \n%s", string(out))
-	}
-
-	// Approve via CLI
-	approveCmd := exec.Command(cliPath, "approve", eventID)
-	approveCmd.Dir = tmpDir
-	if err := approveCmd.Run(); err != nil {
-		t.Fatalf("Failed to approve event: %v", err)
-	}
-
-	// Verify request completes
-	select {
-	case resp2 := <-respChan:
-		if resp2["result"] == nil {
-			t.Errorf("Expected result in response 2 after approval")
-		}
-	case <-time.After(10 * time.Second): // Increase timeout for safety
-		t.Fatal("Timeout waiting for request to complete after approval")
-	}
-
-	// 7. Verify ledger integrity via CLI
+	// 8. Verify ledger integrity
 	verifyCmd := exec.Command(cliPath, "verify")
 	verifyCmd.Dir = tmpDir
 	out, err = verifyCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Verification failed: %v\nOutput: %s", err, string(out))
 	}
-	if !bytes.Contains(out, []byte("Chain is valid")) {
+	if !strings.Contains(string(out), "Chain is valid") {
 		t.Errorf("Verification output should contain 'Chain is valid', got:\n%s", string(out))
 	}
 }
