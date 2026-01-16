@@ -22,8 +22,8 @@ type PolicyAction string
 
 const (
 	ActionAllow  PolicyAction = "allow"
-	ActionStall  PolicyAction = "stall"
-	ActionRedact PolicyAction = "redact"
+	ActionTag    PolicyAction = "tag"    // Renamed from Redact/Stall
+	ActionRedact PolicyAction = "redact" // Keep for hygiene, but not blocking
 )
 
 // Interceptor handles the proxy interception logic
@@ -65,13 +65,9 @@ func (i *Interceptor) InterceptRequest(req *http.Request) {
 		return
 	}
 
-	// 3. Handle Stall
-	if action == ActionStall {
-		if err := i.handleStall(taskID, method, mcpReq, matchedRule); err != nil {
-			i.SendErrorResponse(req, http.StatusForbidden, -32000, "Stall rejected")
-			return
-		}
-	}
+	// 3. Handle Stall (REMOVED - Phase 2 Lobotomy)
+	// We no longer block traffic. We only observe.
+	// if action == ActionStall { ... }
 
 	// 4. Redaction (if needed)
 	if action == ActionRedact && matchedRule != nil {
@@ -116,25 +112,39 @@ func (i *Interceptor) extractTaskMetadata(body []byte) (*mcp.MCPRequest, string,
 
 // evaluatePolicy determines the action for the request
 func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{}) (PolicyAction, *proxy.PolicyRule, error) {
-	if err := assert.Check(i.Core.Policy != nil, "policy configuration missing"); err != nil {
+	if err := assert.Check(i.Core.Observer != nil, "observer engine missing"); err != nil {
 		return ActionAllow, nil, err
 	}
 	if err := assert.Check(method != "", "method name is non-empty"); err != nil {
 		return ActionAllow, nil, err
 	}
 
-	for _, rule := range i.Core.Policy.Policies {
+	// Use the new Observer engine
+	for _, rule := range i.Core.Observer.GetPolicies() {
 		for _, pattern := range rule.MatchMethods {
 			if proxy.MatchPattern(pattern, method) {
 				if rule.Conditions != nil && !proxy.CheckConditions(rule.Conditions, params) {
 					continue
 				}
 
+				// Convert Observer Rule to Proxy Policy Rule (temporary for interface compat)
+				proxyRule := proxy.PolicyRule{
+					ID:             rule.ID,
+					MatchMethods:   rule.MatchMethods,
+					RiskLevel:      rule.RiskLevel,
+					Action:         rule.Action,
+					ProofOfRefusal: rule.ProofOfRefusal,
+					Conditions:     rule.Conditions,
+				}
+
 				action := PolicyAction(rule.Action)
 				if action == "" {
 					action = ActionAllow
 				}
-				return action, &rule, nil
+				// Force Tag action if it was Redact/Stall, or just return action
+				// In Phase 2, we respect the action string but don't block on Stall.
+
+				return action, &proxyRule, nil
 			}
 		}
 	}
@@ -142,46 +152,8 @@ func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{
 	return ActionAllow, nil, nil
 }
 
-// handleStall manages the approval workflow
-func (i *Interceptor) handleStall(taskID, method string, mcpReq *mcp.MCPRequest, matchedRule *proxy.PolicyRule) error {
-	if err := assert.Check(mcpReq != nil, "mcpReq must not be nil"); err != nil {
-		return err
-	}
-	if err := assert.Check(matchedRule != nil, "matchedRule must not be nil"); err != nil {
-		return err
-	}
-
-	eventID := uuid.New().String()[:8]
-	log.Printf("[STALL] Method: %s | Policy: %s | ID: %s", method, matchedRule.ID, eventID)
-
-	event := pool.GetEvent()
-	event.ID = eventID
-	event.Timestamp = time.Now()
-	event.EventType = "blocked"
-	event.Method = method
-	event.Params = mcpReq.Params
-	event.TaskID = taskID
-	event.PolicyID = matchedRule.ID
-	event.RiskLevel = matchedRule.RiskLevel
-	event.WasBlocked = true
-
-	i.Core.Worker.Submit(event)
-
-	approvalChan := make(chan bool, 1)
-	i.Core.StallSignals.Store(eventID, approvalChan)
-
-	log.Printf("Waiting for approval (ID: %s)...", eventID)
-
-	select {
-	case approved := <-approvalChan:
-		if !approved {
-			return fmt.Errorf("stall rejected")
-		}
-		return nil
-	case <-time.After(10 * time.Minute):
-		return fmt.Errorf("stall timeout")
-	}
-}
+// handleStall was removed in Phase 2 (Lobotomy).
+//func (i *Interceptor) handleStall(...) error { ... }
 
 // submitToolCallEvent prepares and sends the tool_call event to the ledger
 func (i *Interceptor) submitToolCallEvent(taskID string, mcpReq *mcp.MCPRequest, matchedRule *proxy.PolicyRule) {

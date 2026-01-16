@@ -1,4 +1,4 @@
-package policy
+package observer
 
 import (
 	"fmt"
@@ -32,13 +32,13 @@ type Rule struct {
 	Conditions     map[string]interface{} `yaml:"conditions,omitempty"`
 }
 
-// Engine handles policy evaluation and enforcement
-type Engine struct {
+// ObserverEngine handles policy evaluation and enforcement
+type ObserverEngine struct {
 	config *Config
 }
 
-// NewEngine creates a new policy engine
-func NewEngine(configPath string) (*Engine, error) {
+// NewObserverEngine creates a new observer engine
+func NewObserverEngine(configPath string) (*ObserverEngine, error) {
 	if err := assert.Check(configPath != "", "config path must not be empty"); err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func NewEngine(configPath string) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{config: config}, nil
+	return &ObserverEngine{config: config}, nil
 }
 
 // loadConfig loads the vouch-policy.yaml file
@@ -73,17 +73,24 @@ func loadConfig(path string) (*Config, error) {
 }
 
 // GetVersion returns the policy version
-func (e *Engine) GetVersion() string {
+func (e *ObserverEngine) GetVersion() string {
 	return e.config.Version
 }
 
 // GetRuleCount returns the number of policy rules
-func (e *Engine) GetRuleCount() int {
+func (e *ObserverEngine) GetRuleCount() int {
 	return len(e.config.Policies)
 }
 
+// GetPolicies returns the full list of rules (for interceptor)
+func (e *ObserverEngine) GetPolicies() []Rule {
+	return e.config.Policies
+}
+
 // ShouldStall checks if a method should be stalled based on policy
-func (e *Engine) ShouldStall(method string, params map[string]interface{}) (bool, *Rule) {
+// Note: This method is deprecated as Active Blocking is removed.
+// It is kept for interface compatibility during refactor.
+func (e *ObserverEngine) ShouldStall(method string, params map[string]interface{}) (bool, *Rule) {
 	if err := assert.Check(method != "", "method name is non-empty"); err != nil {
 		return false, nil
 	}

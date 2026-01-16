@@ -10,6 +10,7 @@ import (
 	"github.com/slyt3/Vouch/internal/core"
 	"github.com/slyt3/Vouch/internal/interceptor"
 	"github.com/slyt3/Vouch/internal/ledger"
+	"github.com/slyt3/Vouch/internal/observer"
 	"github.com/slyt3/Vouch/internal/proxy"
 )
 
@@ -17,9 +18,16 @@ func main() {
 	log.Println("Vouch (Agent Analytics & Safety) - Starting Monolithic -> Modular transition")
 
 	// 1. Load Policy
-	policy, err := proxy.LoadPolicy("vouch-policy.yaml")
+	// 1. Load Policy (Legacy support)
+	policyConfig, err := proxy.LoadPolicy("vouch-policy.yaml")
 	if err != nil {
 		log.Fatalf("Policy load failed: %v", err)
+	}
+
+	// 1b. Load Observer Rules
+	obsEngine, err := observer.NewObserverEngine("vouch-policy.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load observer rules: %v", err)
 	}
 
 	// 2. Initialize Ledger Worker
@@ -32,7 +40,7 @@ func main() {
 	}
 
 	// 3. Initialize Core Engine
-	engine := core.NewEngine(worker, policy)
+	engine := core.NewEngine(worker, policyConfig, obsEngine)
 
 	// 4. Initialize Interceptor
 	interceptorSvc := interceptor.NewInterceptor(engine)
