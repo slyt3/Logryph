@@ -11,20 +11,12 @@ import (
 	"github.com/slyt3/Vouch/internal/interceptor"
 	"github.com/slyt3/Vouch/internal/ledger"
 	"github.com/slyt3/Vouch/internal/observer"
-	"github.com/slyt3/Vouch/internal/proxy"
 )
 
 func main() {
 	log.Println("Vouch (Agent Analytics & Safety) - Starting Monolithic -> Modular transition")
 
-	// 1. Load Policy
-	// 1. Load Policy (Legacy support)
-	policyConfig, err := proxy.LoadPolicy("vouch-policy.yaml")
-	if err != nil {
-		log.Fatalf("Policy load failed: %v", err)
-	}
-
-	// 1b. Load Observer Rules
+	// 1. Load Observer Rules
 	obsEngine, err := observer.NewObserverEngine("vouch-policy.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load observer rules: %v", err)
@@ -40,7 +32,7 @@ func main() {
 	}
 
 	// 3. Initialize Core Engine
-	engine := core.NewEngine(worker, policyConfig, obsEngine)
+	engine := core.NewEngine(worker, obsEngine)
 
 	// 4. Initialize Interceptor
 	interceptorSvc := interceptor.NewInterceptor(engine)
@@ -62,8 +54,6 @@ func main() {
 	// 7. Start API Server
 	go func() {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/api/approve/", apiHandlers.HandleApprove)
-		mux.HandleFunc("/api/reject/", apiHandlers.HandleReject)
 		mux.HandleFunc("/api/rekey", apiHandlers.HandleRekey)
 		mux.HandleFunc("/api/metrics", apiHandlers.HandleStats)
 		log.Print("Admin API: :9998")

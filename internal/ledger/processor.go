@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/crypto"
+	"github.com/slyt3/Vouch/internal/models"
 	"github.com/slyt3/Vouch/internal/pool"
-	"github.com/slyt3/Vouch/internal/proxy"
 )
 
 // EventProcessor handles the logic for hashing, signing, and state tracking
@@ -30,7 +30,7 @@ func NewEventProcessor(db *DB, signer *crypto.Signer, runID string) *EventProces
 }
 
 // ProcessEvent applies the business logic to a single intercepted event
-func (p *EventProcessor) ProcessEvent(event *proxy.Event) error {
+func (p *EventProcessor) ProcessEvent(event *models.Event) error {
 	if err := assert.Check(event != nil, "event must not be nil"); err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func (p *EventProcessor) ProcessEvent(event *proxy.Event) error {
 	return nil
 }
 
-func (p *EventProcessor) trackTaskState(event *proxy.Event) {
+func (p *EventProcessor) trackTaskState(event *models.Event) {
 	if err := assert.Check(event.TaskID != "", "taskID must not be empty"); err != nil {
 		return
 	}
@@ -83,7 +83,7 @@ func isTerminalState(state string) bool {
 }
 
 // persistEvent prepares, hashes, signs and stores an event in the database
-func (p *EventProcessor) persistEvent(event *proxy.Event) error {
+func (p *EventProcessor) persistEvent(event *models.Event) error {
 	if err := assert.Check(event != nil, "event must not be nil"); err != nil {
 		return err
 	}

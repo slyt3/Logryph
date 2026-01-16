@@ -7,14 +7,14 @@ import (
 
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/crypto"
+	"github.com/slyt3/Vouch/internal/models"
 	"github.com/slyt3/Vouch/internal/pool"
-	"github.com/slyt3/Vouch/internal/proxy"
 	"github.com/slyt3/Vouch/internal/ring"
 )
 
 // Worker processes events asynchronously without blocking the proxy
 type Worker struct {
-	ringBuffer  *ring.Buffer[*proxy.Event]
+	ringBuffer  *ring.Buffer[*models.Event]
 	signalChan  chan struct{} // Signal to wake up processor
 	db          *DB
 	signer      *crypto.Signer
@@ -47,7 +47,7 @@ func NewWorker(bufferSize int, dbPath, keyPath string) (*Worker, error) {
 		return nil, fmt.Errorf("initializing signer: %w", err)
 	}
 
-	rb, err := ring.New[*proxy.Event](bufferSize)
+	rb, err := ring.New[*models.Event](bufferSize)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -108,7 +108,7 @@ func (w *Worker) Start() error {
 }
 
 // Submit sends an event to the worker for processing (non-blocking)
-func (w *Worker) Submit(event *proxy.Event) {
+func (w *Worker) Submit(event *models.Event) {
 	// NASA Rule: Check preconditions
 	assert.NotNil(event, "event")
 

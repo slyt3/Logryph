@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.com/slyt3/Vouch/internal/assert"
-	"github.com/slyt3/Vouch/internal/proxy"
+	"github.com/slyt3/Vouch/internal/models"
 )
 
 // Metrics tracks pool performance
@@ -32,18 +32,18 @@ func GetMetrics() Metrics {
 var eventPool = sync.Pool{
 	New: func() interface{} {
 		atomic.AddUint64(&globalMetrics.EventMisses, 1)
-		return &proxy.Event{
+		return &models.Event{
 			Params: make(map[string]interface{}, 8),
 		}
 	},
 }
 
 // GetEvent acquires an event from the pool
-func GetEvent() *proxy.Event {
+func GetEvent() *models.Event {
 	if err := assert.Check(eventPool.New != nil, "eventPool.New must be defined"); err != nil {
-		return &proxy.Event{}
+		return &models.Event{}
 	}
-	e := eventPool.Get().(*proxy.Event)
+	e := eventPool.Get().(*models.Event)
 	// If it wasn't a new creation (miss), it's a hit
 	// This is a bit tricky with sync.Pool, but we can approximate miss count in New()
 	// and calculate hits as TotalRequest - Misses if we track requests.
@@ -54,7 +54,7 @@ func GetEvent() *proxy.Event {
 }
 
 // PutEvent returns an event to the pool after resetting it
-func PutEvent(e *proxy.Event) {
+func PutEvent(e *models.Event) {
 	if e == nil {
 		return
 	}

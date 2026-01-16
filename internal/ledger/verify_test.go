@@ -8,7 +8,7 @@ import (
 
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/crypto"
-	"github.com/slyt3/Vouch/internal/proxy"
+	"github.com/slyt3/Vouch/internal/models"
 )
 
 func TestVerifyChain(t *testing.T) {
@@ -42,7 +42,7 @@ func TestVerifyChain(t *testing.T) {
 	var prevHash string
 	_, prevHash, _ = db.GetLastEvent(genesisID)
 
-	event1 := proxy.Event{
+	event1 := models.Event{
 		ID:        "event-1",
 		RunID:     genesisID,
 		SeqIndex:  1,

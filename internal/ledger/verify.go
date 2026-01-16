@@ -6,7 +6,7 @@ import (
 
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/crypto"
-	"github.com/slyt3/Vouch/internal/proxy"
+	"github.com/slyt3/Vouch/internal/models"
 )
 
 // VerificationResult contains the results of chain verification
@@ -71,7 +71,7 @@ func VerifyChain(db *DB, runID string, signer *crypto.Signer) (*VerificationResu
 }
 
 // VerifyEvent validates a single event's hash and signature
-func VerifyEvent(event *proxy.Event, signer *crypto.Signer) error {
+func VerifyEvent(event *models.Event, signer *crypto.Signer) error {
 	// Safety Assertion: Check signature before hash verification
 	if err := assert.Check(event.Signature != "", "event signature must not be empty: id=%s", event.ID); err != nil {
 		return err

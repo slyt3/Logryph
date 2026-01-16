@@ -1,4 +1,4 @@
-package cmd
+package commands
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/slyt3/Vouch/internal/ledger"
-	"github.com/slyt3/Vouch/internal/proxy"
+	"github.com/slyt3/Vouch/internal/models"
 )
 
 func TraceCommand() {
@@ -48,9 +48,9 @@ func TraceCommand() {
 	}
 }
 
-func buildTree(events []proxy.Event) ([]proxy.Event, map[string][]proxy.Event) {
-	childrenMap := make(map[string][]proxy.Event)
-	var roots []proxy.Event
+func buildTree(events []models.Event) ([]models.Event, map[string][]models.Event) {
+	childrenMap := make(map[string][]models.Event)
+	var roots []models.Event
 
 	// Index by ID for quick lookup if needed, but here we just need parent links
 	// Assuming events are ordered by sequence (time)
@@ -65,7 +65,7 @@ func buildTree(events []proxy.Event) ([]proxy.Event, map[string][]proxy.Event) {
 	return roots, childrenMap
 }
 
-func printTraceNode(e proxy.Event, childrenMap map[string][]proxy.Event, prefix string, isLast bool) {
+func printTraceNode(e models.Event, childrenMap map[string][]models.Event, prefix string, isLast bool) {
 	// Marker symbols
 	marker := "├── "
 	if isLast {

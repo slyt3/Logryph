@@ -13,8 +13,8 @@ import (
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/core"
 	"github.com/slyt3/Vouch/internal/mcp"
+	"github.com/slyt3/Vouch/internal/observer"
 	"github.com/slyt3/Vouch/internal/pool"
-	"github.com/slyt3/Vouch/internal/proxy"
 )
 
 // PolicyAction defines the outcome of a policy check
@@ -111,7 +111,7 @@ func (i *Interceptor) extractTaskMetadata(body []byte) (*mcp.MCPRequest, string,
 }
 
 // evaluatePolicy determines the action for the request
-func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{}) (PolicyAction, *proxy.PolicyRule, error) {
+func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{}) (PolicyAction, *observer.Rule, error) {
 	if err := assert.Check(i.Core.Observer != nil, "observer engine missing"); err != nil {
 		return ActionAllow, nil, err
 	}
@@ -122,29 +122,17 @@ func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{
 	// Use the new Observer engine
 	for _, rule := range i.Core.Observer.GetPolicies() {
 		for _, pattern := range rule.MatchMethods {
-			if proxy.MatchPattern(pattern, method) {
-				if rule.Conditions != nil && !proxy.CheckConditions(rule.Conditions, params) {
+			if observer.MatchPattern(pattern, method) {
+				if rule.Conditions != nil && !observer.CheckConditions(rule.Conditions, params) {
 					continue
-				}
-
-				// Convert Observer Rule to Proxy Policy Rule (temporary for interface compat)
-				proxyRule := proxy.PolicyRule{
-					ID:             rule.ID,
-					MatchMethods:   rule.MatchMethods,
-					RiskLevel:      rule.RiskLevel,
-					Action:         rule.Action,
-					ProofOfRefusal: rule.ProofOfRefusal,
-					Conditions:     rule.Conditions,
 				}
 
 				action := PolicyAction(rule.Action)
 				if action == "" {
 					action = ActionAllow
 				}
-				// Force Tag action if it was Redact/Stall, or just return action
-				// In Phase 2, we respect the action string but don't block on Stall.
 
-				return action, &proxyRule, nil
+				return action, &rule, nil
 			}
 		}
 	}
@@ -156,7 +144,7 @@ func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{
 //func (i *Interceptor) handleStall(...) error { ... }
 
 // submitToolCallEvent prepares and sends the tool_call event to the ledger
-func (i *Interceptor) submitToolCallEvent(taskID string, mcpReq *mcp.MCPRequest, matchedRule *proxy.PolicyRule) {
+func (i *Interceptor) submitToolCallEvent(taskID string, mcpReq *mcp.MCPRequest, matchedRule *observer.Rule) {
 	if err := assert.Check(mcpReq != nil, "mcpReq must not be nil"); err != nil {
 		return
 	}

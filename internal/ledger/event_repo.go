@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/slyt3/Vouch/internal/assert"
-	"github.com/slyt3/Vouch/internal/proxy"
+	"github.com/slyt3/Vouch/internal/models"
 )
 
 // InsertEvent inserts a new event into the ledger
@@ -66,7 +66,7 @@ func (db *DB) GetLastEvent(runID string) (seqIndex uint64, currentHash string, e
 }
 
 // GetAllEvents retrieves all events for a run, ordered by sequence
-func (db *DB) GetAllEvents(runID string) ([]proxy.Event, error) {
+func (db *DB) GetAllEvents(runID string) ([]models.Event, error) {
 	if err := assert.Check(runID != "", "runID must not be empty"); err != nil {
 		return nil, err
 	}
@@ -87,9 +87,9 @@ func (db *DB) GetAllEvents(runID string) ([]proxy.Event, error) {
 	}
 	defer rows.Close()
 
-	var events []proxy.Event
+	var events []models.Event
 	for rows.Next() {
-		var e proxy.Event
+		var e models.Event
 		var timestamp, params, response, taskID, taskState, parentID, policyID, riskLevel string
 
 		err := rows.Scan(
@@ -138,7 +138,7 @@ func (db *DB) GetAllEvents(runID string) ([]proxy.Event, error) {
 }
 
 // GetRecentEvents retrieves the N most recent events
-func (db *DB) GetRecentEvents(runID string, limit int) ([]proxy.Event, error) {
+func (db *DB) GetRecentEvents(runID string, limit int) ([]models.Event, error) {
 	if err := assert.Check(runID != "", "runID must not be empty"); err != nil {
 		return nil, err
 	}
@@ -163,9 +163,9 @@ func (db *DB) GetRecentEvents(runID string, limit int) ([]proxy.Event, error) {
 	}
 	defer rows.Close()
 
-	var events []proxy.Event
+	var events []models.Event
 	for rows.Next() {
-		var e proxy.Event
+		var e models.Event
 		var timestamp, params, response, taskID, taskState, parentID, policyID, riskLevel string
 
 		err := rows.Scan(
@@ -189,7 +189,7 @@ func (db *DB) GetRecentEvents(runID string, limit int) ([]proxy.Event, error) {
 }
 
 // GetEventByID retrieves a specific event by ID
-func (db *DB) GetEventByID(eventID string) (*proxy.Event, error) {
+func (db *DB) GetEventByID(eventID string) (*models.Event, error) {
 	if err := assert.Check(eventID != "", "eventID must not be empty"); err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (db *DB) GetEventByID(eventID string) (*proxy.Event, error) {
 		WHERE id = ?
 	`
 
-	var e proxy.Event
+	var e models.Event
 	var timestamp, params, response, taskID, taskState, parentID, policyID, riskLevel string
 
 	err := db.conn.QueryRow(query, eventID).Scan(
@@ -227,7 +227,7 @@ func (db *DB) GetEventByID(eventID string) (*proxy.Event, error) {
 }
 
 // GetEventsByTaskID retrieves all events for a specific task
-func (db *DB) GetEventsByTaskID(taskID string) ([]proxy.Event, error) {
+func (db *DB) GetEventsByTaskID(taskID string) ([]models.Event, error) {
 	if err := assert.Check(taskID != "", "taskID must not be empty"); err != nil {
 		return nil, err
 	}
@@ -244,9 +244,9 @@ func (db *DB) GetEventsByTaskID(taskID string) ([]proxy.Event, error) {
 	}
 	defer rows.Close()
 
-	var events []proxy.Event
+	var events []models.Event
 	for rows.Next() {
-		var e proxy.Event
+		var e models.Event
 		var timestamp, params, response, tID, tState, parentID, policyID, riskLevel string
 
 		err := rows.Scan(
@@ -281,7 +281,7 @@ func (db *DB) GetTaskFailureCount(taskID string) (int, error) {
 }
 
 // GetRiskEvents returns events with high or critical risk
-func (db *DB) GetRiskEvents() ([]proxy.Event, error) {
+func (db *DB) GetRiskEvents() ([]models.Event, error) {
 	if err := assert.Check(db.conn != nil, "database connection missing"); err != nil {
 		return nil, err
 	}
@@ -298,9 +298,9 @@ func (db *DB) GetRiskEvents() ([]proxy.Event, error) {
 	}
 	defer rows.Close()
 
-	var events []proxy.Event
+	var events []models.Event
 	for rows.Next() {
-		var e proxy.Event
+		var e models.Event
 		var timestamp, params, response, taskID, taskState, parentID, policyID, riskLevel string
 
 		err := rows.Scan(

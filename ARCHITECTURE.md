@@ -1,52 +1,80 @@
-# Vouch Architecture Deep-Dive
+# Vouch Systems Architecture
 
-This document outlines the technical architecture of Vouch: The Agent Black Box.
+Vouch (Associated Evidence Ledger) is a high-integrity forensic logger for AI agents, designed to meet NASA Power of Ten safety standards.
 
-## System Overview
-
-Vouch operates as a non-invasive transparent proxy between AI Agents and their Tool/MCP servers.
+## Module Structure
 
 ```mermaid
 graph TD
-    Agent[AI Agent] <--> Proxy[Vouch Proxy]
-    Proxy <--> Tools[MCP / Tool Servers]
-    Proxy -- Async Submit --> Worker[Ledger Worker]
-    Worker -- Append Only --> DB[(Immutable SQLite)]
-    Worker -- Sign with Ed25519 --> Key[.vouch_key]
-    CLI[Vouch CLI] -- Verify --> DB
+    CLI[cmd/vouch-cli] --> CMD[commands]
+    CMD --> LEDGER[internal/ledger]
+    CMD --> POOL[internal/pool]
+    
+    MAIN[server main.go] --> CORE[internal/core]
+    MAIN --> API[internal/api]
+    MAIN --> INTERCEPTOR[internal/interceptor]
+    
+    INTERCEPTOR --> OBSERVER[internal/observer]
+    INTERCEPTOR --> CORE
+    
+    CORE --> WORKER[internal/ledger/worker]
+    CORE --> OBSERVER
+    
+    WORKER --> PROCESSOR[internal/ledger/processor]
+    WORKER --> RING[internal/ring]
+    
+    PROCESSOR --> DB[internal/ledger/db]
+    PROCESSOR --> CRYPTO[internal/crypto]
+    PROCESSOR --> MODELS[internal/models]
+    
+    LEDGER --> MODELS
+    INTERCEPTOR --> MODELS
+    POOL --> MODELS
 ```
 
 ## Core Components
 
-### 1. The Interception Layer (Proxy)
-*   **Technology**: Go `httputil.ReverseProxy`.
-*   **Responsibility**: Synchronously intercepts JSON-RPC traffic. It matches methods against the Policy Engine and enforces "Stalls" (Human-in-the-loop) for high-risk actions.
-*   **Health Sentinel**: Monitors the Ledger Worker. If the ledger fails (e.g., disk full), the proxy "Fails Safe" and blocks further agent traffic.
+### 1. Silent Observer (`internal/interceptor`, `internal/observer`)
+*   **Role**: Passive interception of HTTP traffic between Agent and MCP Servers.
+*   **Logic**: Uses `ObserverEngine` to match requests against `vouch-policy.yaml`.
+*   **Safety**: Zero-blocking logic. All policy actions are observational (tagging, risk scoring, redaction).
+*   **Models**: Converts HTTP requests into standardized `models.Event` structs.
 
-### 2. The Immutable Ledger
-*   **Data Model**: SHA-256 Hash Chain (Blockchain-style linkage).
-*   **Serialization**: RFC 8785 (JSON Canonicalization Scheme) ensures deterministic hashing regardless of key order.
-*   **Signing**: Ed25519 signatures generated for every block.
-*   **Persistence**: SQLite with WAL (Write-Ahead Logging) for high concurrency.
+### 2. Evidence Vault (`internal/ledger`, `internal/models`)
+*   **Role**: Cryptographically secure append-only log of all agent actions.
+*   **Persistence**: SQLite (`events` table) with strict strict sequence indexing.
+*   **Integrity**:
+    *   **SHA-256 Chaining**: Each event includes the hash of the previous event (Merkle chain).
+    *   **Ed25519 Signing**: Every event is signed by the instance's private key.
+    *   **Bitcoin Anchoring**: Periodically anchors chain state to Bitcoin blockchain (via Blockstream API).
 
-### 3. The Governance Engine (Policy)
-*   **Configuration**: YAML-based risk rules.
-*   **Logic**: Wildcard method matching and parameter-level condition checks.
-*   **Stall Intelligence**: Integrated with the Ledger to detect repeated failures or suspicious patterns.
+### 3. Async Ingestion (`internal/ring`, `internal/ledger/worker`)
+*   **Role**: Decouples high-throughput interception from disk I/O.
+*   **Mechanism**: Fixed-size Ring Buffer (`internal/ring`).
+*   **Behavior**: Non-blocking submission. If buffer is full, events are dropped (fail-open) with metrics increment, preserving agent availability.
 
-## Data Flow (SEP-1686)
+### 4. Forensic CLI (`cmd/vouch-cli`)
+*   **Role**: Post-incident analysis and verification.
+*   **Commands**:
+    *   `verify`: Validates the cryptographic integrity of the entire chain.
+    *   `trace`: Reconstructs causality trees for agent tasks.
+    *   `export`: Creates an Evidence Bag (ZIP) for legal handover.
 
-Vouch implements a specific state tracking protocol (SEP-1686) for long-running agent tasks.
+## Data Flow
 
-1.  **Request `tool_call`**: Proxy intercepts, checks policy, redacts PII, and submits to Ledger.
-2.  **Response `tool_response`**: Proxy intercepts results, updates the internal `task_id` state map, and submits to Ledger.
-3.  **Terminal State**: Once a task hits `completed` or `failed`, the Ledger Worker triggers a `task_terminal` event and cleans up memory.
+1.  **Intercept**: Agent -> `interceptor` -> `models.Event`
+2.  **Queue**: `models.Event` -> `ring.Buffer`
+3.  **Process**: `worker` -> `processor` -> Sign & Hash
+4.  **Persist**: `processor` -> `sqlite`
+5.  **Anchor**: `sqlite` -> `Genesis/Anchor`
 
-## Security Model
+## Directory Layout
 
-| Threat | Mitigation |
-| :--- | :--- |
-| **Log Tampering** | Hash chaining and Ed25519 signatures make retrospective edits detectable. |
-| **Agent Escape** | Transparent proxying ensures the agent cannot "bypass" the logger. |
-| **PII Leakage** | Synchronous redaction before data ever reaches the persistent ledger. |
-| **Denial of Service** | Backpressure warnings and Fail-Closed health sentinel protect system integrity. |
+*   `cmd/vouch-cli`: CLI entry point and definitions.
+*   `internal/core`: State management and orchestration.
+*   `internal/models`: Shared data structures (`Event`).
+*   `internal/observer`: Rule loading and evaluation.
+*   `internal/ledger`: Database, hashing, signing, and verification.
+*   `internal/interceptor`: HTTP middleware.
+*   `internal/crypto`: Key management and primitives.
+*   `internal/assert`: NASA-compliant assertion safety.

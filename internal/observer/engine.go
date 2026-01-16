@@ -30,6 +30,7 @@ type Rule struct {
 	ProofOfRefusal bool                   `yaml:"proof_of_refusal"`
 	LogLevel       string                 `yaml:"log_level,omitempty"`
 	Conditions     map[string]interface{} `yaml:"conditions,omitempty"`
+	Redact         []string               `yaml:"redact,omitempty"` // List of param keys to redact
 }
 
 // ObserverEngine handles policy evaluation and enforcement
@@ -87,36 +88,8 @@ func (e *ObserverEngine) GetPolicies() []Rule {
 	return e.config.Policies
 }
 
-// ShouldStall checks if a method should be stalled based on policy
-// Note: This method is deprecated as Active Blocking is removed.
-// It is kept for interface compatibility during refactor.
-func (e *ObserverEngine) ShouldStall(method string, params map[string]interface{}) (bool, *Rule) {
-	if err := assert.Check(method != "", "method name is non-empty"); err != nil {
-		return false, nil
-	}
-	for _, rule := range e.config.Policies {
-		if rule.Action != "stall" {
-			continue
-		}
-
-		// Check method match with wildcard support
-		for _, pattern := range rule.MatchMethods {
-			if matchPattern(pattern, method) {
-				// Check additional conditions if present
-				if rule.Conditions != nil {
-					if !checkConditions(rule.Conditions, params) {
-						continue
-					}
-				}
-				return true, &rule
-			}
-		}
-	}
-	return false, nil
-}
-
-// matchPattern matches a method against a pattern with wildcard support
-func matchPattern(pattern, method string) bool {
+// MatchPattern matches a method against a pattern with wildcard support
+func MatchPattern(pattern, method string) bool {
 	if err := assert.Check(pattern != "", "pattern is non-empty"); err != nil {
 		return false
 	}
@@ -136,8 +109,8 @@ func matchPattern(pattern, method string) bool {
 	return false
 }
 
-// checkConditions evaluates policy conditions against request parameters
-func checkConditions(conditions map[string]interface{}, params map[string]interface{}) bool {
+// CheckConditions evaluates policy conditions against request parameters
+func CheckConditions(conditions map[string]interface{}, params map[string]interface{}) bool {
 	// Check amount_gt condition for financial operations
 	if amountGt, ok := conditions["amount_gt"].(int); ok {
 		if amount, ok := params["amount"].(float64); ok {

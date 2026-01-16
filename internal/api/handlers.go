@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/slyt3/Vouch/internal/core"
 	"github.com/slyt3/Vouch/internal/pool"
@@ -17,58 +16,6 @@ type Handlers struct {
 
 func NewHandlers(engine *core.Engine) *Handlers {
 	return &Handlers{Core: engine}
-}
-
-func (h *Handlers) HandleApprove(w http.ResponseWriter, r *http.Request) {
-	eventID := strings.TrimPrefix(r.URL.Path, "/api/approve/")
-	if eventID == "" {
-		http.Error(w, "Event ID required", http.StatusBadRequest)
-		return
-	}
-
-	val, ok := h.Core.StallSignals.Load(eventID)
-	if !ok {
-		http.Error(w, "Event not found", http.StatusNotFound)
-		return
-	}
-
-	approvalChan := val.(chan bool)
-	select {
-	case approvalChan <- true:
-		log.Printf("Event %s approved via API", eventID)
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("Approved\n")); err != nil {
-			log.Printf("Failed to write response: %v", err)
-		}
-	default:
-		http.Error(w, "Already processed", http.StatusConflict)
-	}
-}
-
-func (h *Handlers) HandleReject(w http.ResponseWriter, r *http.Request) {
-	eventID := strings.TrimPrefix(r.URL.Path, "/api/reject/")
-	if eventID == "" {
-		http.Error(w, "Event ID required", http.StatusBadRequest)
-		return
-	}
-
-	val, ok := h.Core.StallSignals.Load(eventID)
-	if !ok {
-		http.Error(w, "Event not found", http.StatusNotFound)
-		return
-	}
-
-	approvalChan := val.(chan bool)
-	select {
-	case approvalChan <- false:
-		log.Printf("Event %s rejected via API", eventID)
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("Rejected\n")); err != nil {
-			log.Printf("Failed to write response: %v", err)
-		}
-	default:
-		http.Error(w, "Already processed", http.StatusConflict)
-	}
 }
 
 func (h *Handlers) HandleRekey(w http.ResponseWriter, r *http.Request) {

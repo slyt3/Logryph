@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slyt3/Vouch/internal/crypto"
+	"github.com/slyt3/Vouch/internal/models"
 	"github.com/slyt3/Vouch/internal/pool"
-	"github.com/slyt3/Vouch/internal/proxy"
 )
 
 // CreateGenesisBlock creates the initial genesis event for a new run
@@ -91,7 +91,7 @@ func CreateGenesisBlock(db *DB, signer *crypto.Signer, agentName string) (string
 }
 
 // insertEvent is a helper to insert an event into the database
-func insertEvent(db *DB, event *proxy.Event) error {
+func insertEvent(db *DB, event *models.Event) error {
 	paramsBytes, err := json.Marshal(event.Params)
 	if err != nil {
 		return fmt.Errorf("marshaling params: %w", err)

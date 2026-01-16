@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/slyt3/Vouch/internal/cli/cmd"
+	"github.com/slyt3/Vouch/cmd/vouch-cli/commands"
 )
 
 func main() {
@@ -17,26 +17,22 @@ func main() {
 
 	switch command {
 	case "verify":
-		cmd.VerifyCommand()
+		commands.VerifyCommand()
 	case "status":
-		cmd.StatusCommand()
+		commands.StatusCommand()
 	case "events":
-		cmd.EventsCommand()
-	case "approve":
-		cmd.ApproveCommand()
-	case "reject":
-		cmd.RejectCommand()
+		commands.EventsCommand()
 	case "stats":
-		cmd.StatsCommand()
+		commands.StatsCommand()
 	case "risk":
-		cmd.RiskCommand()
+		commands.RiskCommand()
 	case "export":
-		cmd.ExportCommand()
+		commands.ExportCommand()
 
 	case "rekey":
-		cmd.RekeyCommand()
+		commands.RekeyCommand()
 	case "trace":
-		cmd.TraceCommand()
+		commands.TraceCommand()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -45,14 +41,12 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("Vouch CLI - Agent Analytics & Safety Command Line Tool")
+	fmt.Println("Vouch CLI - Associated Evidence Ledger (AEL) Tool tool")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  vouch verify              Validate the entire hash chain")
 	fmt.Println("  vouch status              Show current run information")
 	fmt.Println("  vouch events [--limit N]  List recent events (default: 10)")
-	fmt.Println("  vouch approve <event-id>  Approve a stalled action")
-	fmt.Println("  vouch reject <event-id>   Reject a stalled action")
 	fmt.Println("  vouch stats               Show detailed run and global statistics")
 	fmt.Println("  vouch risk                List all high-risk events")
 	fmt.Println("  vouch export <file.zip>   Export the current run as an Evidence Bag (ZIP)")
