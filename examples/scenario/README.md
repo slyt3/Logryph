@@ -17,7 +17,7 @@ Run these in separate terminal windows:
 
 1. **Start the Mock Cloud API**:
    ```bash
-   go run examples/scenario/api_server.go
+   go run examples/scenario/server/main.go
    ```
 
 2. **Start Vouch (The Recorder)** with scenario policies:
@@ -28,7 +28,7 @@ Run these in separate terminal windows:
 ## Step 2: Run the Rogue Agent
 Execute the agent task:
 ```bash
-go run examples/scenario/rogue_agent.go
+go run examples/scenario/agent/main.go
 ```
 
 The agent will list instances (Low Risk) and then attempt the deletion (Critical Risk).
