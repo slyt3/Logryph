@@ -38,9 +38,16 @@ func TestTamperDetection(t *testing.T) {
 
 	// 1. Setup Ledger and Signer
 	// Need to set Cwd to tempDir so worker finds schema.sql
-	origWd, _ := os.Getwd()
-	os.Chdir(tempDir)
-	defer os.Chdir(origWd)
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(origWd)
+	}()
 
 	dbStore, err := store.NewDB(dbPath)
 	if err != nil {

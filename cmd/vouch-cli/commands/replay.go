@@ -65,7 +65,9 @@ func ReplayCommand() {
 
 	body, _ := io.ReadAll(resp.Body)
 	var newResp map[string]interface{}
-	json.Unmarshal(body, &newResp)
+	if err := json.Unmarshal(body, &newResp); err != nil {
+		log.Fatalf("Failed to decode replay response: %v", err)
+	}
 
 	// 3. Compare and Show
 	fmt.Printf("Status:   %s\n", resp.Status)

@@ -9,17 +9,36 @@ import (
 
 func TestStats(t *testing.T) {
 	// Setup temporary database
-	tmpDir, _ := os.MkdirTemp("", "vouch-stats-test-*")
+	tmpDir, err := os.MkdirTemp("", "vouch-stats-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
 	defer os.RemoveAll(tmpDir)
 
-	schemaContent, _ := os.ReadFile("../../../schema.sql")
-	_ = os.WriteFile(filepath.Join(tmpDir, "schema.sql"), schemaContent, 0644)
+	schemaContent, err := os.ReadFile("../../../schema.sql")
+	if err != nil {
+		t.Fatalf("failed to read schema: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(tmpDir, "schema.sql"), schemaContent, 0644)
+	if err != nil {
+		t.Fatalf("failed to write schema: %v", err)
+	}
 
-	oldWd, _ := os.Getwd()
-	_ = os.Chdir(tmpDir)
-	defer func() { _ = os.Chdir(oldWd) }()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(oldWd)
+	}()
 
-	db, _ := NewDB("vouch.db")
+	db, err := NewDB("vouch.db")
+	if err != nil {
+		t.Fatalf("failed to create database: %v", err)
+	}
 	defer db.Close()
 
 	runID := "run-stats-1"

@@ -32,12 +32,12 @@ func Check(condition bool, msg string, args ...interface{}) error {
 
 // NotNil checks that a pointer or interface is not nil.
 func NotNil(obj interface{}, name string) {
-	Check(obj != nil, "%s must not be nil", name)
+	_ = Check(obj != nil, "%s must not be nil", name)
 }
 
 // InRange checks that value is within [min, max] inclusive.
 func InRange(val, min, max int, name string) {
-	Check(val >= min && val <= max, "%s (%d) out of range [%d, %d]", name, val, min, max)
+	_ = Check(val >= min && val <= max, "%s (%d) out of range [%d, %d]", name, val, min, max)
 }
 
 // True is an alias for Check, for readability.
