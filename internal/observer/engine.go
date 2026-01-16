@@ -23,12 +23,12 @@ type Config struct {
 
 // Rule represents a single policy rule
 type Rule struct {
-	ID           string                 `yaml:"id"`
-	MatchMethods []string               `yaml:"match_methods"`
-	RiskLevel    string                 `yaml:"risk_level"`
-	LogLevel     string                 `yaml:"log_level,omitempty"`
-	Conditions   map[string]interface{} `yaml:"conditions,omitempty"`
-	Redact       []string               `yaml:"redact,omitempty"` // List of param keys to redact
+	ID              string              `yaml:"id"`
+	MatchMethods    []string            `yaml:"match_methods"`
+	RiskLevel       string              `yaml:"risk_level"`
+	LogLevel        string              `yaml:"log_level,omitempty"`
+	MatchConditions []map[string]string `yaml:"conditions,omitempty"`
+	Redact          []string            `yaml:"redact,omitempty"` // List of param keys to redact
 }
 
 // ObserverEngine handles policy evaluation and enforcement
@@ -108,14 +108,31 @@ func MatchPattern(pattern, method string) bool {
 }
 
 // CheckConditions evaluates policy conditions against request parameters
-func CheckConditions(conditions map[string]interface{}, params map[string]interface{}) bool {
-	// Check amount_gt condition for financial operations
-	if amountGt, ok := conditions["amount_gt"].(int); ok {
-		if amount, ok := params["amount"].(float64); ok {
-			return amount > float64(amountGt)
+func CheckConditions(conditions []map[string]string, params map[string]interface{}) bool {
+	if len(conditions) == 0 {
+		return true
+	}
+
+	for _, cond := range conditions {
+		key := cond["key"]
+		operator := cond["operator"]
+		value := cond["value"]
+
+		val, ok := params[key]
+		if !ok {
+			return false
+		}
+
+		switch operator {
+		case "eq":
+			if fmt.Sprintf("%v", val) != value {
+				return false
+			}
+		default:
+			// Unknown operator, skip
+			continue
 		}
 	}
 
-	// Default: condition not met
 	return true
 }

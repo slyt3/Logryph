@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -15,10 +17,15 @@ import (
 )
 
 func main() {
+	configPath := flag.String("config", "vouch-policy.yaml", "path to policy configuration")
+	target := flag.String("target", "http://localhost:8080", "target tool server URL")
+	listenPort := flag.Int("port", 9999, "port to listen on")
+	flag.Parse()
+
 	log.Println("Vouch: The AI Agent Flight Recorder - Forensic Intelligence Engine Starting")
 
 	// 1. Load Observer Rules
-	obsEngine, err := observer.NewObserverEngine("vouch-policy.yaml")
+	obsEngine, err := observer.NewObserverEngine(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load observer rules: %v", err)
 	}
@@ -46,15 +53,18 @@ func main() {
 	apiHandlers := api.NewHandlers(engine)
 
 	// 6. Setup Proxy
-	targetURL, _ := url.Parse("http://localhost:8080")
-	reverseProxy := httputil.NewSingleHostReverseProxy(targetURL)
-
-	originalDirector := reverseProxy.Director
-	reverseProxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		interceptorSvc.InterceptRequest(req)
+	targetURL, err := url.Parse(*target)
+	if err != nil {
+		log.Fatalf("Invalid target URL: %v", err)
 	}
+	reverseProxy := httputil.NewSingleHostReverseProxy(targetURL)
 	reverseProxy.ModifyResponse = interceptorSvc.InterceptResponse
+
+	// Wrap proxy with interceptor
+	wrappedProxy := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		interceptorSvc.InterceptRequest(r)
+		reverseProxy.ServeHTTP(w, r)
+	})
 
 	// 7. Start API Server
 	go func() {
@@ -68,8 +78,8 @@ func main() {
 	}()
 
 	// 8. Start Proxy Server
-	log.Print("Proxy Server: :9999 -> :8080")
-	if err := http.ListenAndServe(":9999", reverseProxy); err != nil {
+	log.Printf("Proxy Server: :%d -> %s", *listenPort, *target)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", *listenPort), wrappedProxy); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

@@ -15,8 +15,12 @@ policies:
   - id: "financial-ops"
     match_methods: ["stripe:*", "plaid:transfer_money"]
     risk_level: "critical"
-    conditions:
-      amount_gt: 1000          # Logic Go proxy will parse from JSON params
+    # Logic Go proxy will parse from JSON params
+    # Note: Conditions use the new list format
+    # conditions:
+    #   - key: "amount"
+    #     operator: "gt"  # gt not implemented yet, using eq for demo simplicity if needed
+    #     value: "1000"
 
   - id: "read-only-knowledge"
     match_methods: ["google_search:*", "slack:search"]

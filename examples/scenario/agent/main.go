@@ -10,11 +10,16 @@ import (
 	"time"
 )
 
-// In a real scenario, Vouch's interceptor would be running at :9999
-// and the Target API would be at :8080.
 const (
 	VouchProxy = "http://localhost:9999"
 )
+
+type MCPRequest struct {
+	JSONRPC string                 `json:"jsonrpc"`
+	Method  string                 `json:"method"`
+	Params  map[string]interface{} `json:"params"`
+	ID      int                    `json:"id"`
+}
 
 func main() {
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -24,29 +29,35 @@ func main() {
 
 	// Step 1: List Instances
 	fmt.Println("Step 1: Listing compute instances...")
-	call(client, "GET", "/compute/instances", nil)
+	call(client, "compute:list_instances", map[string]interface{}{"task_id": "audit-2026"})
 
 	time.Sleep(1 * time.Second)
 
 	// Step 2: "Rogue" Action - Attempt to delete production database
 	fmt.Println("Step 2: [CRITICAL] Attempting to decommission legacy database 'prod-users-v2'...")
-	call(client, "POST", "/database/delete?name=prod-users-v2", nil)
+	call(client, "database:delete", map[string]interface{}{
+		"name":    "prod-users-v2",
+		"task_id": "audit-2026",
+	})
 
 	fmt.Println("\n🤖 Task finished (with security failure).")
 	fmt.Println("🔍 Investigator: Use 'vouch-cli trace' to see what happened.")
 }
 
-func call(client *http.Client, method, path string, body interface{}) {
-	var bodyReader io.Reader
-	if body != nil {
-		b, _ := json.Marshal(body)
-		bodyReader = bytes.NewBuffer(b)
+func call(client *http.Client, method string, params map[string]interface{}) {
+	reqData := MCPRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+		ID:      1,
 	}
 
-	req, err := http.NewRequest(method, VouchProxy+path, bodyReader)
+	b, _ := json.Marshal(reqData)
+	req, err := http.NewRequest("POST", VouchProxy, bytes.NewBuffer(b))
 	if err != nil {
 		log.Fatalf("Failed to create request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -319,3 +319,23 @@ func (db *DB) GetRiskEvents() ([]models.Event, error) {
 
 	return events, nil
 }
+
+// GetUniqueTasks returns all unique task IDs in the ledger
+func (db *DB) GetUniqueTasks() ([]string, error) {
+	query := `SELECT DISTINCT task_id FROM events WHERE task_id != ''`
+	rows, err := db.conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, nil
+}

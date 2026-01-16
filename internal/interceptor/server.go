@@ -35,9 +35,12 @@ func NewInterceptor(engine *core.Engine) *Interceptor {
 	return &Interceptor{Core: engine}
 }
 
-// InterceptRequest intercepts and analyzes incoming requests (Orchestrator)
 func (i *Interceptor) InterceptRequest(req *http.Request) {
 	if req.Method != http.MethodPost {
+		return
+	}
+
+	if req.Body == nil {
 		return
 	}
 
@@ -123,7 +126,7 @@ func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{
 	for _, rule := range i.Core.Observer.GetPolicies() {
 		for _, pattern := range rule.MatchMethods {
 			if observer.MatchPattern(pattern, method) {
-				if rule.Conditions != nil && !observer.CheckConditions(rule.Conditions, params) {
+				if len(rule.MatchConditions) > 0 && !observer.CheckConditions(rule.MatchConditions, params) {
 					continue
 				}
 

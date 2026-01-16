@@ -2,6 +2,7 @@ package audit_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestVerifyChain(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "vouch-verify-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	db, err := store.NewDB("vouch.db")
+	db, err := store.NewDB(filepath.Join(tmpDir, "vouch.db"))
 	if err != nil {
 		t.Fatalf("failed to create database: %v", err)
 	}

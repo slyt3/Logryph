@@ -2,10 +2,16 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 )
+
+type MCPRequest struct {
+	JSONRPC string                 `json:"jsonrpc"`
+	Method  string                 `json:"method"`
+	Params  map[string]interface{} `json:"params"`
+	ID      interface{}            `json:"id"`
+}
 
 type Instance struct {
 	ID     string `json:"id"`
@@ -21,28 +27,50 @@ var instances = []Instance{
 func main() {
 	mux := http.NewServeMux()
 
-	// List Instances (Low Risk)
-	mux.HandleFunc("/compute/instances", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("GET /compute/instances")
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(instances)
-	})
-
-	// Delete Database (High Risk Scenario)
-	mux.HandleFunc("/database/delete", func(w http.ResponseWriter, r *http.Request) {
-		dbName := r.URL.Query().Get("name")
-		log.Printf("DELETE /database/delete?name=%s", dbName)
-
-		if dbName == "prod-users-v2" {
-			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintf(w, `{"error": "Unauthorized: Production database deletion requires MFA"}`)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		fmt.Fprintf(w, `{"status": "deleted", "database": "%s"}`, dbName)
+		var req MCPRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON-RPC", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("Received MCP Call: %s", req.Method)
+
+		w.Header().Set("Content-Type", "application/json")
+		switch req.Method {
+		case "compute:list_instances":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"result":  instances,
+				"id":      req.ID,
+			})
+		case "database:delete":
+			name, _ := req.Params["name"].(string)
+			if name == "prod-users-v2" {
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"jsonrpc": "2.0",
+					"error":   map[string]interface{}{"code": -32000, "message": "Unauthorized: Production database deletion requires MFA"},
+					"id":      req.ID,
+				})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"result":  map[string]interface{}{"status": "deleted", "database": name},
+				"id":      req.ID,
+			})
+		default:
+			http.Error(w, "Method not found", http.StatusNotFound)
+		}
 	})
 
-	log.Println("Mock Cloud API started on :8080")
+	log.Println("Mock Cloud API (MCP) started on :8080")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal(err)
 	}

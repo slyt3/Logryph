@@ -12,21 +12,37 @@ import (
 )
 
 func TraceCommand() {
+	db, err := store.NewDB("vouch.db")
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: vouch trace <task-id> [--html report.html]")
-		os.Exit(1)
+		tasks, err := db.GetUniqueTasks()
+		if err != nil {
+			log.Fatalf("Failed to get tasks: %v", err)
+		}
+		if len(tasks) == 0 {
+			fmt.Println("No recorded tasks found in ledger.")
+			return
+		}
+		fmt.Println("Available Tasks for Forensic Trace:")
+		fmt.Println(strings.Repeat("-", 30))
+		for _, t := range tasks {
+			if t == "" {
+				continue
+			}
+			fmt.Printf("• %s\n", t)
+		}
+		fmt.Println("\nUsage: vouch trace <task-id>")
+		return
 	}
 	taskID := os.Args[2]
 	htmlOutput := ""
 	if len(os.Args) >= 5 && os.Args[3] == "--html" {
 		htmlOutput = os.Args[4]
 	}
-
-	db, err := store.NewDB("vouch.db")
-	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
-	}
-	defer db.Close()
 
 	events, err := db.GetEventsByTaskID(taskID)
 	if err != nil {
