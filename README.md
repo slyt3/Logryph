@@ -2,6 +2,8 @@
 
 > **"If it isn't in the ledger, it didn't happen."**
 
+hit the star if you like the repo ⭐️
+
 Vouch is a **forensic-grade flight recorder** for autonomous AI agents. It passively captures tool execution, cryptographically signs every action, and maintains an immutable, tamper-evident audit trail.
 
 ---
