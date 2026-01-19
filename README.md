@@ -2,7 +2,7 @@
 
 > **"If it isnt in the ledger, it didnt happen."**
 
-hit the star if you like the repo 
+hit the star if you like the repo ⭐️
 
 Vouch is a **forensic-grade flight recorder** for autonomous AI agents. It passively captures tool execution, cryptographically signs every action, and maintains an immutable, tamper-evident audit trail.
 
@@ -35,7 +35,8 @@ go build -o vouch-cli cmd/vouch-cli/main.go
 *   **Immutable**: SQLite ledger with SHA-256 chaining. If a single byte is altered, verification fails.
 *   **Cryptographic Proof**: Every event is signed with an internal Ed25519 key—proving the record came from Vouch.
 *   **Forensic Ready**: Meets [FRE 902(13)](https://www.law.cornell.edu/rules/fre/rule_902) standards for self-authenticating electronic records.
-*   **Bitcoin Anchored**: Genesis blocks are anchored to the Bitcoin blockchain for external proof-of-existence.
+*   **Bitcoin Anchored**: Genesis blocks and periodic state are anchored to the Bitcoin blockchain for external proof-of-existence.
+*   **Dynamic Policies**: Hot-reload security rules from `vouch-policy.yaml` without restarting the server.
 *   **High Performance**: < 2ms overhead with zero-allocation memory pools.
 
 ---

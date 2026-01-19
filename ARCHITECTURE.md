@@ -42,6 +42,7 @@ graph TD
 ### 1. Silent Observer (`internal/interceptor`, `internal/observer`)
 *   **Role**: Passive interception of HTTP traffic between Agent and MCP Servers.
 *   **Logic**: Uses `ObserverEngine` to match requests against `vouch-policy.yaml`.
+*   **Dynamic Reloading**: Automatically polls the policy file for changes (5s interval) and updates rules without downtime.
 *   **Safety**: Zero-blocking logic. All policy actions are observational (tagging, risk scoring, redaction).
 *   **Models**: Converts HTTP requests into standardized `models.Event` structs.
 
@@ -51,7 +52,7 @@ graph TD
 *   **Integrity**:
     *   **SHA-256 Chaining**: Each event includes the hash of the previous event (Merkle chain).
     *   **Ed25519 Signing**: Every event is signed by the instance's private key.
-    *   **Bitcoin Anchoring**: Periodically anchors chain state to Bitcoin blockchain (via Blockstream API).
+    *   **Bitcoin Anchoring**: Automatically anchors chain state to Bitcoin blockchain every 10 minutes (via Blockstream API).
 
 ### 3. Async Ingestion (`internal/ring`, `internal/ledger/worker`)
 *   **Role**: Decouples high-throughput interception from disk I/O.
