@@ -17,13 +17,15 @@ import (
 
 // Worker processes events asynchronously without blocking the proxy
 type Worker struct {
-	ringBuffer  *ring.Buffer[*models.Event]
-	signalChan  chan struct{} // Signal to wake up processor
-	db          EventRepository
-	signer      *crypto.Signer
-	runID       string
-	processor   *EventProcessor
-	isUnhealthy atomic.Bool // Health sentinel
+	ringBuffer      *ring.Buffer[*models.Event]
+	signalChan      chan struct{} // Signal to wake up processor
+	db              EventRepository
+	signer          *crypto.Signer
+	runID           string
+	processor       *EventProcessor
+	isUnhealthy     atomic.Bool   // Health sentinel
+	processedEvents atomic.Uint64 // Metrics
+	droppedEvents   atomic.Uint64 // Metrics
 }
 
 // NewWorker creates a new async ledger worker with a buffered channel.
@@ -110,6 +112,7 @@ func (w *Worker) Submit(event *models.Event) {
 	assert.NotNil(event, "event")
 
 	if w.ringBuffer.IsFull() {
+		w.droppedEvents.Add(1)
 		log.Printf("[BACKPRESSURE] Ring buffer full, dropping event %s", event.ID)
 		// Option: In Strict Mode, we would block here.
 		// For MVP Asyn Mode, we drop.
@@ -127,6 +130,11 @@ func (w *Worker) Submit(event *models.Event) {
 	default:
 		// Already signaled
 	}
+}
+
+// Stats returns worker performance metrics
+func (w *Worker) Stats() (processed, dropped uint64) {
+	return w.processedEvents.Load(), w.droppedEvents.Load()
 }
 
 // Close shuts down the worker and releases resources
@@ -187,6 +195,7 @@ func (w *Worker) processEvents() {
 				log.Printf("[CRITICAL] Event Processing Failure: %v", err)
 				w.isUnhealthy.Store(true)
 			}
+			w.processedEvents.Add(1)
 			pool.PutEvent(event)
 		}
 	}

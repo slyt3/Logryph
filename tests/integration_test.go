@@ -105,7 +105,8 @@ policies:
 
 	select {
 	case <-ready:
-		// Proxy is ready
+		// Proxy is ready, give it a moment to fully bind
+		time.Sleep(500 * time.Millisecond)
 	case <-time.After(45 * time.Second): // Build and startup might take time
 		t.Fatal("Timeout waiting for proxy readiness")
 	}

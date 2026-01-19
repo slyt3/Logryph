@@ -37,3 +37,34 @@ func (h *Handlers) HandleStats(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to encode JSON: %v", err)
 	}
 }
+
+func (h *Handlers) HandlePrometheus(w http.ResponseWriter, r *http.Request) {
+	poolMetrics := pool.GetMetrics()
+	proc, drop := h.Core.Worker.Stats()
+	tasks := 0
+	h.Core.ActiveTasks.Range(func(_, _ interface{}) bool {
+		tasks++
+		return true
+	})
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	fmt.Fprintf(w, "# HELP vouch_pool_event_hits_total Total hits on the event pool\n")
+	fmt.Fprintf(w, "# TYPE vouch_pool_event_hits_total counter\n")
+	fmt.Fprintf(w, "vouch_pool_event_hits_total %d\n", poolMetrics.EventHits)
+
+	fmt.Fprintf(w, "# HELP vouch_pool_event_misses_total Total misses (allocations) in the event pool\n")
+	fmt.Fprintf(w, "# TYPE vouch_pool_event_misses_total counter\n")
+	fmt.Fprintf(w, "vouch_pool_event_misses_total %d\n", poolMetrics.EventMisses)
+
+	fmt.Fprintf(w, "# HELP vouch_ledger_events_processed_total Total events successfully written to the ledger\n")
+	fmt.Fprintf(w, "# TYPE vouch_ledger_events_processed_total counter\n")
+	fmt.Fprintf(w, "vouch_ledger_events_processed_total %d\n", proc)
+
+	fmt.Fprintf(w, "# HELP vouch_ledger_events_dropped_total Total events dropped due to backpressure\n")
+	fmt.Fprintf(w, "# TYPE vouch_ledger_events_dropped_total counter\n")
+	fmt.Fprintf(w, "vouch_ledger_events_dropped_total %d\n", drop)
+
+	fmt.Fprintf(w, "# HELP vouch_engine_active_tasks_total Number of currently active causal tasks\n")
+	fmt.Fprintf(w, "# TYPE vouch_engine_active_tasks_total gauge\n")
+	fmt.Fprintf(w, "vouch_engine_active_tasks_total %d\n", tasks)
+}

@@ -70,6 +70,7 @@ func main() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/rekey", apiHandlers.HandleRekey)
 		mux.HandleFunc("/api/metrics", apiHandlers.HandleStats)
+		mux.HandleFunc("/metrics", apiHandlers.HandlePrometheus)
 		log.Print("Admin API: :9998")
 		if err := http.ListenAndServe(":9998", mux); err != nil {
 			log.Fatalf("API server error: %v", err)
