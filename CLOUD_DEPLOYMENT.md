@@ -39,9 +39,20 @@ Vouch uses GitHub Actions for automated quality assurance.
 Vouch stores its ledger in `vouch.db`. In a cloud environment (Kubernetes/ECS), this **must** be mounted to a persistent volume (EBS/PVC) to ensure logs are not lost on container restart.
 
 ### 2. Monitoring
-Vouch emits structured logs to `stdout`. 
-*   **Backpressure Metrics**: Monitor logs for `[BACKPRESSURE]`. If this appears, increase the persistence layer's IOPS.
-*   **Health Checks**: Use the `/api/health` (proposed) or monitor for `[CRITICAL]` ledger failure logs.
+Vouch provides multiple monitoring interfaces:
+
+**Prometheus Metrics** (Recommended):
+- Endpoint: `http://localhost:9998/metrics`
+- Metrics:
+  - `vouch_ledger_events_processed_total`: Total events written to ledger
+  - `vouch_ledger_events_dropped_total`: Events dropped due to backpressure
+  - `vouch_pool_event_hits_total`: Event pool cache efficiency
+  - `vouch_engine_active_tasks_total`: Currently active causal tasks
+
+**Structured Logs**:
+*   Vouch emits structured logs to `stdout`
+*   **Backpressure**: Monitor for `[BACKPRESSURE]` messages. If frequent, increase persistence IOPS
+*   **Health**: Monitor for `[CRITICAL]` ledger failure logs
 
 ### 3. Key Management
 The `.vouch_key` is the root of trust.

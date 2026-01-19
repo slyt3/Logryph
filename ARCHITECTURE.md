@@ -66,6 +66,14 @@ graph TD
     *   `trace`: Reconstructs causality trees for agent tasks (supports HTML export).
     *   `export`: Creates an Evidence Bag (ZIP) for legal handover.
 
+### 5. Admin API (`internal/api`)
+*   **Role**: Runtime observability and management.
+*   **Endpoints**:
+    *   `/metrics`: Prometheus-format metrics for production monitoring.
+    *   `/api/metrics`: JSON metrics for internal dashboards.
+    *   `/api/rekey`: Ed25519 key rotation endpoint.
+*   **Metrics Exposed**: Pool performance, ledger throughput, backpressure, active tasks.
+
 ## Data Flow
 
 1.  **Intercept**: Agent -> `interceptor` -> `models.Event`
