@@ -8,11 +8,14 @@ Before analyzing agent actions, you must prove the audit trail hasn't been tampe
 ```bash
 # Verify the entire ledger integrity
 ./vouch-cli verify
+
+# For offline/CI environments (skip live Bitcoin verification)
+./vouch-cli verify --skip-live
 ```
 **Verification Checks:**
 1.  **Merkle Linkage**: Ensures no events were deleted or inserted in the past.
 2.  **Ed25519 Authenticity**: Ensures all records were signed by the authorized Vouch instance.
-3.  **Bitcoin Anchoring (Live)**: Cross-references both the genesis and periodic terminal hashes against the public Bitcoin blockchain via the Blockstream API.
+3.  **Bitcoin Anchoring (Live)**: Cross-references both the genesis and periodic anchors against the public Bitcoin blockchain via the Blockstream API (skipped with `--skip-live`).
 
 ## 2. Reconstructing Incidents
 When a specific failure occurs, use the Task ID provided by the agent or extracted from high-risk logs.
@@ -53,4 +56,14 @@ The ZIP contains:
 
 ## Technical Appendix: Failure Modes
 *   **Tamper Detected**: If `./vouch-cli verify` fails, the ledger is compromised. Do not use for legal proceedings without manual binary forensic analysis of the `prev_hash` chain.
-*   **Gap Detected**: Indicates Vouch dropped events due to extreme load (fail-open mode). Check system metrics for `ring_buffer_full` events.
+*   **Gap Detected**: Indicates Vouch dropped events due to extreme load (fail-open mode). Check Prometheus metrics at `http://localhost:9998/metrics` for `vouch_ledger_events_dropped_total`.
+
+## Monitoring & Observability
+For production deployments, monitor Vouch health via Prometheus:
+```bash
+curl http://localhost:9998/metrics
+```
+**Key Metrics**:
+- `vouch_ledger_events_processed_total`: Total events successfully written
+- `vouch_ledger_events_dropped_total`: Events lost to backpressure (investigate if non-zero)
+- `vouch_engine_active_tasks_total`: Currently tracked causal chains
