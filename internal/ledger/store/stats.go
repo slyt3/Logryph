@@ -35,12 +35,19 @@ func (db *DB) GetRunStats(runID string) (*ledger.RunStats, error) {
 	}
 	defer rows.Close()
 
-	for rows.Next() {
+	const maxRiskLevels = 32
+	for i := 0; i < maxRiskLevels; i++ {
+		if !rows.Next() {
+			break
+		}
 		var risk string
 		var count int
 		if err := rows.Scan(&risk, &count); err == nil {
 			stats.RiskBreakdown[risk] = count
 		}
+	}
+	if err := assert.Check(rows.Err() == nil, "risk breakdown rows error: %v", rows.Err()); err != nil {
+		return nil, err
 	}
 
 	return stats, nil

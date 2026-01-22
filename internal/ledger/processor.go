@@ -141,6 +141,12 @@ func (p *EventProcessor) persistEvent(event *models.Event) error {
 }
 
 func (p *EventProcessor) createTaskCompletionEvent(taskID string, state string) {
+	if err := assert.Check(taskID != "", "taskID must not be empty"); err != nil {
+		return
+	}
+	if err := assert.Check(state != "", "state must not be empty"); err != nil {
+		return
+	}
 	event := pool.GetEvent()
 	event.ID = uuid.New().String()[:8]
 	event.Timestamp = time.Now()
@@ -155,7 +161,14 @@ func (p *EventProcessor) createTaskCompletionEvent(taskID string, state string) 
 	event.TaskState = state
 
 	// Direct call to persist
-	_ = p.persistEvent(event)
+	if err := p.persistEvent(event); err != nil {
+		if err2 := assert.Check(false, "persist task completion event failed: %v", err); err2 != nil {
+			pool.PutEvent(event)
+			return
+		}
+		pool.PutEvent(event)
+		return
+	}
 	// We don't PutEvent here because this is often called inside Worker loop which will Put it,
 	// BUT wait, this is NOT coming from the channel.
 	// Actually, persistEvent just reads it. So we can PutEvent here.

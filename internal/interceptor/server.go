@@ -26,6 +26,14 @@ const (
 	ActionRedact PolicyAction = "redact" // Keep for hygiene, but not blocking
 )
 
+const (
+	maxPolicies   = 256
+	maxPatterns   = 128
+	maxConditions = 64
+	maxRedactKeys = 128
+	maxParams     = 256
+)
+
 // Interceptor handles the proxy interception logic
 type Interceptor struct {
 	Core *core.Engine
@@ -121,10 +129,28 @@ func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{
 	if err := assert.Check(method != "", "method name is non-empty"); err != nil {
 		return ActionAllow, nil, err
 	}
+	policies := i.Core.Observer.GetPolicies()
+	if err := assert.Check(len(policies) <= maxPolicies, "policy count exceeds max: %d", len(policies)); err != nil {
+		return ActionAllow, nil, err
+	}
 
 	// Use the new Observer engine
-	for _, rule := range i.Core.Observer.GetPolicies() {
-		for _, pattern := range rule.MatchMethods {
+	for i := 0; i < maxPolicies; i++ {
+		if i >= len(policies) {
+			break
+		}
+		rule := &policies[i]
+		if err := assert.Check(len(rule.MatchMethods) <= maxPatterns, "match_methods exceeds max in rule=%s", rule.ID); err != nil {
+			return ActionAllow, nil, err
+		}
+		if err := assert.Check(len(rule.MatchConditions) <= maxConditions, "conditions exceeds max in rule=%s", rule.ID); err != nil {
+			return ActionAllow, nil, err
+		}
+		for j := 0; j < maxPatterns; j++ {
+			if j >= len(rule.MatchMethods) {
+				break
+			}
+			pattern := rule.MatchMethods[j]
 			if observer.MatchPattern(pattern, method) {
 				if len(rule.MatchConditions) > 0 && !observer.CheckConditions(rule.MatchConditions, params) {
 					continue
@@ -135,7 +161,7 @@ func (i *Interceptor) evaluatePolicy(method string, params map[string]interface{
 					action = ActionRedact
 				}
 
-				return action, &rule, nil
+				return action, rule, nil
 			}
 		}
 	}
@@ -170,7 +196,13 @@ func (i *Interceptor) submitToolCallEvent(taskID string, mcpReq *mcp.MCPRequest,
 
 	if taskID != "" {
 		if parentID, ok := i.Core.LastEventByTask.Load(taskID); ok {
-			event.ParentID = parentID.(string)
+			if pid, ok := parentID.(string); ok {
+				event.ParentID = pid
+			} else {
+				if err := assert.Check(false, "parentID has unexpected type for taskID=%s", taskID); err != nil {
+					// Recovery: skip parent linkage on type mismatch
+				}
+			}
 		}
 		i.Core.LastEventByTask.Store(taskID, event.ID)
 	}
@@ -186,24 +218,25 @@ func (i *Interceptor) redactSensitiveData(body []byte, keys []string) ([]byte, e
 	if err := assert.Check(len(keys) > 0, "redaction keys must be defined"); err != nil {
 		return body, nil
 	}
+	if err := assert.Check(len(keys) <= maxRedactKeys, "redaction keys exceed max: %d", len(keys)); err != nil {
+		return nil, err
+	}
 
 	var mcpReq mcp.MCPRequest
 	if err := json.Unmarshal(body, &mcpReq); err != nil {
 		return nil, err
 	}
 
-	// 4. Bound map iterations
-	if err := assert.Check(len(mcpReq.Params) < 100, "excessive parameters in request"); err != nil {
+	if err := assert.Check(len(mcpReq.Params) <= maxParams, "excessive parameters in request: %d", len(mcpReq.Params)); err != nil {
 		return nil, err
 	}
-	for k := range mcpReq.Params {
-		if err := assert.Check(len(keys) < 1000, "excessive key redaction list"); err != nil {
+	for i := 0; i < maxRedactKeys; i++ {
+		if i >= len(keys) {
 			break
 		}
-		for _, key := range keys {
-			if k == key {
-				mcpReq.Params[k] = "[REDACTED]"
-			}
+		key := keys[i]
+		if _, ok := mcpReq.Params[key]; ok {
+			mcpReq.Params[key] = "[REDACTED]"
 		}
 	}
 

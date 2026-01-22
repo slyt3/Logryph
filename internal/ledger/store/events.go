@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,6 +10,8 @@ import (
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/models"
 )
+
+const maxEventRows = 100000
 
 // StoreEvent persists a models.Event to the ledger, unpacking it for the SQL query
 func (db *DB) StoreEvent(event *models.Event) error {
@@ -84,6 +87,9 @@ func (db *DB) GetLastEvent(runID string) (seqIndex uint64, currentHash string, e
 
 	query := `SELECT seq_index, current_hash FROM events WHERE run_id = ? ORDER BY seq_index DESC LIMIT 1`
 	err = db.conn.QueryRow(query, runID).Scan(&seqIndex, &currentHash)
+	if err == sql.ErrNoRows {
+		return 0, "", nil
+	}
 	if err != nil {
 		return 0, "", fmt.Errorf("querying last event: %w", err)
 	}
@@ -111,7 +117,10 @@ func (db *DB) GetAllEvents(runID string) ([]models.Event, error) {
 	defer rows.Close()
 
 	var events []models.Event
-	for rows.Next() {
+	for i := 0; i < maxEventRows; i++ {
+		if !rows.Next() {
+			break
+		}
 		var e models.Event
 		var timestamp, params, response, taskID, taskState, parentID, policyID, riskLevel string
 
@@ -157,6 +166,9 @@ func (db *DB) GetAllEvents(runID string) ([]models.Event, error) {
 		events = append(events, e)
 	}
 
+	if err := assert.Check(rows.Err() == nil, "get all events rows error: %v", rows.Err()); err != nil {
+		return nil, err
+	}
 	return events, nil
 }
 
@@ -185,7 +197,10 @@ func (db *DB) GetRecentEvents(runID string, limit int) ([]models.Event, error) {
 	defer rows.Close()
 
 	var events []models.Event
-	for rows.Next() {
+	for i := 0; i < maxEventRows; i++ {
+		if !rows.Next() {
+			break
+		}
 		var e models.Event
 		var timestamp, params, response, taskID, taskState, parentID, policyID, riskLevel string
 
@@ -206,6 +221,9 @@ func (db *DB) GetRecentEvents(runID string, limit int) ([]models.Event, error) {
 		events = append(events, e)
 	}
 
+	if err := assert.Check(rows.Err() == nil, "recent events rows error: %v", rows.Err()); err != nil {
+		return nil, err
+	}
 	return events, nil
 }
 
@@ -261,7 +279,10 @@ func (db *DB) GetEventsByTaskID(taskID string) ([]models.Event, error) {
 	defer rows.Close()
 
 	var events []models.Event
-	for rows.Next() {
+	for i := 0; i < maxEventRows; i++ {
+		if !rows.Next() {
+			break
+		}
 		var e models.Event
 		var timestamp, params, response, tID, tState, parentID, policyID, riskLevel string
 
@@ -279,6 +300,9 @@ func (db *DB) GetEventsByTaskID(taskID string) ([]models.Event, error) {
 		e.PolicyID = policyID
 		e.RiskLevel = riskLevel
 		events = append(events, e)
+	}
+	if err := assert.Check(rows.Err() == nil, "task events rows error: %v", rows.Err()); err != nil {
+		return nil, err
 	}
 	return events, nil
 }
@@ -299,7 +323,10 @@ func (db *DB) GetRiskEvents() ([]models.Event, error) {
 	defer rows.Close()
 
 	var events []models.Event
-	for rows.Next() {
+	for i := 0; i < maxEventRows; i++ {
+		if !rows.Next() {
+			break
+		}
 		var e models.Event
 		var timestamp, params, response, taskID, taskState, parentID, policyID, riskLevel string
 
@@ -317,6 +344,9 @@ func (db *DB) GetRiskEvents() ([]models.Event, error) {
 		events = append(events, e)
 	}
 
+	if err := assert.Check(rows.Err() == nil, "risk events rows error: %v", rows.Err()); err != nil {
+		return nil, err
+	}
 	return events, nil
 }
 
@@ -330,12 +360,18 @@ func (db *DB) GetUniqueTasks() ([]string, error) {
 	defer rows.Close()
 
 	var tasks []string
-	for rows.Next() {
+	for i := 0; i < maxEventRows; i++ {
+		if !rows.Next() {
+			break
+		}
 		var t string
 		if err := rows.Scan(&t); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, t)
+	}
+	if err := assert.Check(rows.Err() == nil, "unique tasks rows error: %v", rows.Err()); err != nil {
+		return nil, err
 	}
 	return tasks, nil
 }

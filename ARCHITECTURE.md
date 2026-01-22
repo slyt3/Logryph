@@ -1,5 +1,7 @@
 # Vouch Systems Architecture
 
+This document is **optional**. Read it if you are reviewing design decisions, contributing to core modules, or doing a security/architecture review. If you just want to run Vouch, you can skip it.
+
 Vouch (Associated Evidence Ledger) is a high-integrity forensic logger for AI agents, designed to meet NASA Power of Ten safety standards.
 
 ## Module Structure

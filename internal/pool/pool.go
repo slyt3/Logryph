@@ -19,6 +19,8 @@ type Metrics struct {
 
 var globalMetrics Metrics
 
+const maxEventFields = 256
+
 // GetMetrics returns a copy of the current pool metrics
 func GetMetrics() Metrics {
 	return Metrics{
@@ -77,11 +79,37 @@ func PutEvent(e *models.Event) {
 	e.WasBlocked = false
 
 	// Clear maps but keep allocated capacity
-	for k := range e.Params {
-		delete(e.Params, k)
+	if err := assert.Check(len(e.Params) <= maxEventFields, "params map too large: %d", len(e.Params)); err != nil {
+		return
 	}
-	for k := range e.Response {
-		delete(e.Response, k)
+	if err := assert.Check(len(e.Response) <= maxEventFields, "response map too large: %d", len(e.Response)); err != nil {
+		return
+	}
+	for i := 0; i < maxEventFields; i++ {
+		key := ""
+		found := false
+		for k := range e.Params {
+			key = k
+			found = true
+			break
+		}
+		if !found {
+			break
+		}
+		delete(e.Params, key)
+	}
+	for i := 0; i < maxEventFields; i++ {
+		key := ""
+		found := false
+		for k := range e.Response {
+			key = k
+			found = true
+			break
+		}
+		if !found {
+			break
+		}
+		delete(e.Response, key)
 	}
 
 	eventPool.Put(e)

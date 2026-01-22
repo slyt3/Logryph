@@ -123,16 +123,19 @@ policies:
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
-	for {
+	const maxPolls = 20
+	for i := 0; i < maxPolls; i++ {
 		select {
 		case <-timeout:
 			t.Fatal("Timed out waiting for policy reload")
+			return
 		case <-ticker.C:
 			if engine.GetVersion() == "2.0" {
 				return // Success
 			}
 		}
 	}
+	t.Fatal("Exceeded max polls waiting for policy reload")
 }
 
 func TestCheckConditions(t *testing.T) {
@@ -210,7 +213,12 @@ func TestCheckConditions(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	const maxTests = 32
+	for i := 0; i < maxTests; i++ {
+		if i >= len(tests) {
+			break
+		}
+		tt := tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			if got := CheckConditions(tt.conditions, tt.params); got != tt.want {
 				t.Errorf("CheckConditions() = %v, want %v", got, tt.want)

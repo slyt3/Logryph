@@ -46,7 +46,9 @@ func (b *Buffer[T]) Push(item T) error {
 		return ErrBufferFull
 	}
 	// Bounds check (explicit, though go does it)
-	assert.InRange(b.tail, 0, b.capacity-1, "tail index")
+	if err := assert.InRange(b.tail, 0, b.capacity-1, "tail index"); err != nil {
+		return err
+	}
 
 	b.data[b.tail] = item
 	b.tail = (b.tail + 1) % b.capacity
@@ -64,7 +66,9 @@ func (b *Buffer[T]) Pop() (T, error) {
 		return zero, ErrBufferEmpty
 	}
 
-	assert.InRange(b.head, 0, b.capacity-1, "head index")
+	if err := assert.InRange(b.head, 0, b.capacity-1, "head index"); err != nil {
+		return zero, err
+	}
 	item := b.data[b.head]
 
 	// Optional: Clear reference to help GC if T is a pointer

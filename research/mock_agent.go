@@ -72,7 +72,12 @@ func testRapidFireAllowActions(results *TestResults) {
 
 	log.Printf("   Sending %d rapid-fire calls to :9999...\n", len(calls))
 
-	for i, call := range calls {
+	const maxCalls = 32
+	for i := 0; i < maxCalls; i++ {
+		if i >= len(calls) {
+			break
+		}
+		call := calls[i]
 		start := time.Now()
 
 		req := map[string]interface{}{
@@ -114,8 +119,12 @@ func testRapidFireAllowActions(results *TestResults) {
 
 	// Calculate average
 	var total time.Duration
-	for _, l := range results.Latencies {
-		total += l
+	const maxLatencies = 10000
+	for i := 0; i < maxLatencies; i++ {
+		if i >= len(results.Latencies) {
+			break
+		}
+		total += results.Latencies[i]
 	}
 	if len(results.Latencies) > 0 {
 		results.AverageLatency = total / time.Duration(len(results.Latencies))
@@ -304,7 +313,12 @@ func printResults(results *TestResults) {
 	}
 
 	allPassed := true
-	for _, check := range checks {
+	const maxChecks = 16
+	for i := 0; i < maxChecks; i++ {
+		if i >= len(checks) {
+			break
+		}
+		check := checks[i]
 		status := "[PASS]"
 		if !check.passed {
 			status = "[FAIL]"

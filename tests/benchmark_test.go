@@ -30,8 +30,20 @@ func BenchmarkHighFrequencyToolCalls(b *testing.B) {
 	payload := []byte(`{"jsonrpc":"2.0","method":"mcp:list_tools","params":{},"id":1}`)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		req, _ := http.NewRequest("POST", proxyAddr, bytes.NewBuffer(payload))
+	const maxBenchIters = 1000
+	n := b.N
+	if n > maxBenchIters {
+		n = maxBenchIters
+	}
+	for i := 0; i < maxBenchIters; i++ {
+		if i >= n {
+			break
+		}
+		req, err := http.NewRequest("POST", proxyAddr, bytes.NewBuffer(payload))
+		if err != nil {
+			b.Fatalf("failed to create request: %v", err)
+			return
+		}
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {

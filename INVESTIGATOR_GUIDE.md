@@ -1,5 +1,7 @@
 # Investigator's Guide to Vouch
 
+This document is **optional**. Read it only if you are doing incident response, audit, or legal evidence handoff.
+
 This guide provides procedures for performing forensic investigations using the Vouch Associated Evidence Ledger (AEL).
 
 ## 1. Establishing Chain of Custody

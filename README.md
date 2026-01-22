@@ -44,13 +44,13 @@ go build -o vouch-cli cmd/vouch-cli/main.go
 
 ## Documentation
 
-Detailed guides for every stakeholder:
+You do **not** need all docs to use Vouch. If you only want to record and inspect events locally, the Quick Start above is enough. The guides below are optional and scoped to specific audiences:
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)**: System design, diagrams, and packet flow.
-- **[INVESTIGATOR_GUIDE.md](INVESTIGATOR_GUIDE.md)**: How to use Vouch in an incident response scenario.
-- **[CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md)**: Docker, CI/CD, and production operations.
-- **[CONTRIBUTING.md](CONTRIBUTING.md)**: Development workflow and safety standards.
-- **[Examples](examples/scenario/README.md)**: Live "Rogue Agent" investigation scenario.
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: System design, diagrams, and packet flow (for contributors and reviewers).
+- **[INVESTIGATOR_GUIDE.md](INVESTIGATOR_GUIDE.md)**: Incident response workflow (for security/forensics teams).
+- **[CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md)**: Docker and production ops (for SRE/DevOps).
+- **[CONTRIBUTING.md](CONTRIBUTING.md)**: Development workflow and safety standards (for contributors).
+- **[Examples](examples/scenario/README.md)**: Live "Rogue Agent" investigation scenario (for demos).
 
 ---
 

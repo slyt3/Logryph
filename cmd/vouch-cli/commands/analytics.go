@@ -47,11 +47,19 @@ func EventsCommand() {
 	if err := assert.Check(err == nil, "failed to get events: %v", err); err != nil {
 		log.Fatalf("Failed to get events: %v", err)
 	}
+	const maxRecentEvents = 10000
+	if err := assert.Check(len(events) <= maxRecentEvents, "recent events exceed max: %d", len(events)); err != nil {
+		log.Fatalf("Recent events exceed max: %v", err)
+	}
 
 	fmt.Printf("Recent Events (showing %d)\n", len(events))
 	fmt.Println("===========================")
-	for i := len(events) - 1; i >= 0; i-- {
-		e := events[i]
+	for i := 0; i < maxRecentEvents; i++ {
+		idx := len(events) - 1 - i
+		if idx < 0 {
+			break
+		}
+		e := events[idx]
 		fmt.Printf("[%d] %s | %s | %s\n", e.SeqIndex, e.ID[:8], e.EventType, e.Method)
 		if e.WasBlocked {
 			fmt.Print("    BLOCKED\n")
@@ -88,8 +96,24 @@ func StatsCommand() {
 	if len(stats.RiskBreakdown) == 0 {
 		fmt.Println("  None")
 	} else {
-		for risk, count := range stats.RiskBreakdown {
-			fmt.Printf("  %-10s: %d\n", risk, count)
+		const maxRiskLevels = 32
+		if err := assert.Check(len(stats.RiskBreakdown) <= maxRiskLevels, "risk breakdown exceeds max: %d", len(stats.RiskBreakdown)); err != nil {
+			log.Fatalf("Risk breakdown exceeds max: %v", err)
+		}
+		for i := 0; i < maxRiskLevels; i++ {
+			key := ""
+			found := false
+			for risk := range stats.RiskBreakdown {
+				key = risk
+				found = true
+				break
+			}
+			if !found {
+				break
+			}
+			count := stats.RiskBreakdown[key]
+			fmt.Printf("  %-10s: %d\n", key, count)
+			delete(stats.RiskBreakdown, key)
 		}
 	}
 
@@ -141,10 +165,18 @@ func RiskCommand() {
 		fmt.Println("[OK] No high-risk events detected")
 		return
 	}
+	const maxRiskEvents = 10000
+	if err := assert.Check(len(risky) <= maxRiskEvents, "risky events exceed max: %d", len(risky)); err != nil {
+		log.Fatalf("Risky events exceed max: %v", err)
+	}
 
 	fmt.Printf("High-Risk Events Found: %d\n", len(risky))
 	fmt.Println("==========================")
-	for _, e := range risky {
+	for i := 0; i < maxRiskEvents; i++ {
+		if i >= len(risky) {
+			break
+		}
+		e := risky[i]
 		fmt.Printf("[%s] %-8s | %-10s | %s\n", e.RiskLevel, e.ID[:8], e.EventType, e.Method)
 		if e.PolicyID != "" {
 			fmt.Printf("    Policy: %s\n", e.PolicyID)

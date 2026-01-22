@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/ledger/store"
 	"github.com/slyt3/Vouch/internal/models"
 )
@@ -27,9 +28,17 @@ func TraceCommand() {
 			fmt.Println("No recorded tasks found in ledger.")
 			return
 		}
+		const maxTasks = 10000
+		if err := assert.Check(len(tasks) <= maxTasks, "tasks exceed max: %d", len(tasks)); err != nil {
+			log.Fatalf("Tasks exceed max: %v", err)
+		}
 		fmt.Println("Available Tasks for Forensic Trace:")
 		fmt.Println(strings.Repeat("-", 30))
-		for _, t := range tasks {
+		for i := 0; i < maxTasks; i++ {
+			if i >= len(tasks) {
+				break
+			}
+			t := tasks[i]
 			if t == "" {
 				continue
 			}
@@ -70,11 +79,13 @@ func TraceCommand() {
 
 	// Reconstruct Hierarchy
 	roots, childrenMap := buildTree(events)
+	const maxRoots = 10000
+	if err := assert.Check(len(roots) <= maxRoots, "root nodes exceed max: %d", len(roots)); err != nil {
+		log.Fatalf("Root nodes exceed max: %v", err)
+	}
 
 	// Visualize
-	for i, root := range roots {
-		printTraceNode(root, childrenMap, "", i == len(roots)-1, events[0].Timestamp)
-	}
+	printTraceTree(roots, childrenMap, events[0].Timestamp)
 
 	// Footer Summary
 	duration := events[len(events)-1].Timestamp.Sub(events[0].Timestamp)
@@ -85,8 +96,15 @@ func TraceCommand() {
 func buildTree(events []models.Event) ([]models.Event, map[string][]models.Event) {
 	childrenMap := make(map[string][]models.Event)
 	var roots []models.Event
-
-	for _, e := range events {
+	const maxEvents = 100000
+	if err := assert.Check(len(events) <= maxEvents, "events exceed max: %d", len(events)); err != nil {
+		return roots, childrenMap
+	}
+	for i := 0; i < maxEvents; i++ {
+		if i >= len(events) {
+			break
+		}
+		e := events[i]
 		if e.ParentID == "" {
 			roots = append(roots, e)
 		} else {
@@ -96,41 +114,87 @@ func buildTree(events []models.Event) ([]models.Event, map[string][]models.Event
 	return roots, childrenMap
 }
 
-func printTraceNode(e models.Event, childrenMap map[string][]models.Event, prefix string, isLast bool, startTime time.Time) {
-	// Marker symbols
-	marker := "|-- "
-	if isLast {
-		marker = "`-- "
-	}
+type traceFrame struct {
+	node   models.Event
+	prefix string
+	isLast bool
+}
 
-	// Status icon
-	statusSym := "[ ]" // Default: Call
-	if e.EventType == "tool_response" {
-		statusSym = "[x]" // Response
+func printTraceTree(roots []models.Event, childrenMap map[string][]models.Event, startTime time.Time) {
+	const maxTraceNodes = 100000
+	const maxChildren = 10000
+	stack := make([]traceFrame, 0, maxTraceNodes)
+	if err := assert.Check(len(roots) <= maxTraceNodes, "roots exceed max: %d", len(roots)); err != nil {
+		return
 	}
-	if e.WasBlocked {
-		statusSym = "[X]" // Blocked
+	for i := 0; i < maxTraceNodes; i++ {
+		idx := len(roots) - 1 - i
+		if idx < 0 {
+			break
+		}
+		stack = append(stack, traceFrame{node: roots[idx], prefix: "", isLast: idx == len(roots)-1})
+		if len(stack) >= maxTraceNodes {
+			break
+		}
 	}
-	if e.RiskLevel == "critical" {
-		statusSym = "[!!]" // Critical
-	}
+	for processed := 0; processed < maxTraceNodes; processed++ {
+		if len(stack) == 0 {
+			break
+		}
+		idx := len(stack) - 1
+		frame := stack[idx]
+		stack = stack[:idx]
 
-	// Calculate delta from start
-	delta := e.Timestamp.Sub(startTime)
+		e := frame.node
+		prefix := frame.prefix
+		isLast := frame.isLast
+		// Marker symbols
+		marker := "|-- "
+		if isLast {
+			marker = "`-- "
+		}
 
-	fmt.Printf("%s%s%s %-15s [%s] (+%v)\n", prefix, marker, statusSym, e.Method, e.ID[:6], delta.Truncate(time.Millisecond))
+		// Status icon
+		statusSym := "[ ]" // Default: Call
+		if e.EventType == "tool_response" {
+			statusSym = "[x]" // Response
+		}
+		if e.WasBlocked {
+			statusSym = "[X]" // Blocked
+		}
+		if e.RiskLevel == "critical" {
+			statusSym = "[!!]" // Critical
+		}
 
-	// New Prefix for children
-	newPrefix := prefix
-	if isLast {
-		newPrefix += "    "
-	} else {
-		newPrefix += "|   "
-	}
+		// Calculate delta from start
+		delta := e.Timestamp.Sub(startTime)
 
-	children := childrenMap[e.ID]
-	for i, child := range children {
-		printTraceNode(child, childrenMap, newPrefix, i == len(children)-1, startTime)
+		fmt.Printf("%s%s%s %-15s [%s] (+%v)\n", prefix, marker, statusSym, e.Method, e.ID[:6], delta.Truncate(time.Millisecond))
+
+		// New Prefix for children
+		newPrefix := prefix
+		if isLast {
+			newPrefix += "    "
+		} else {
+			newPrefix += "|   "
+		}
+
+		children := childrenMap[e.ID]
+		if err := assert.Check(len(children) <= maxChildren, "children exceed max for node=%s: %d", e.ID, len(children)); err != nil {
+			continue
+		}
+		for j := 0; j < maxChildren; j++ {
+			childIdx := len(children) - 1 - j
+			if childIdx < 0 {
+				break
+			}
+			child := children[childIdx]
+			childIsLast := childIdx == len(children)-1
+			if len(stack) >= maxTraceNodes {
+				break
+			}
+			stack = append(stack, traceFrame{node: child, prefix: newPrefix, isLast: childIsLast})
+		}
 	}
 }
 func generateHTMLReport(taskID string, events []models.Event, outputPath string) error {
@@ -171,7 +235,15 @@ func generateHTMLReport(taskID string, events []models.Event, outputPath string)
     </div>
 `, title, taskID, events[0].RunID, time.Now().Format(time.RFC1123))
 
-	for _, e := range events {
+	const maxReportEvents = 100000
+	if err := assert.Check(len(events) <= maxReportEvents, "report events exceed max: %d", len(events)); err != nil {
+		return err
+	}
+	for i := 0; i < maxReportEvents; i++ {
+		if i >= len(events) {
+			break
+		}
+		e := events[i]
 		riskClass := ""
 		if e.RiskLevel == "high" {
 			riskClass = "event-risk-high"

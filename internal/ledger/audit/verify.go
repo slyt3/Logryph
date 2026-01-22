@@ -52,8 +52,16 @@ func VerifyChain(db EventReader, runID string, signer *crypto.Signer) (*Verifica
 		return result, nil
 	}
 
+	const maxVerifyEvents = 100000
+	if err := assert.Check(len(events) <= maxVerifyEvents, "event count exceeds max: %d", len(events)); err != nil {
+		return nil, err
+	}
 	// Verify each event
-	for i, event := range events {
+	for i := 0; i < maxVerifyEvents; i++ {
+		if i >= len(events) {
+			break
+		}
+		event := events[i]
 		// Verify hash chain linkage (except for genesis)
 		if i > 0 {
 			prevEvent := events[i-1]
@@ -139,8 +147,15 @@ func VerifyAnchors(db EventReader, runID string) (*AnchorVerificationResult, err
 	}
 
 	result := &AnchorVerificationResult{Valid: true}
-
-	for _, event := range events {
+	const maxAnchorEvents = 100000
+	if err := assert.Check(len(events) <= maxAnchorEvents, "anchor events exceed max: %d", len(events)); err != nil {
+		return nil, err
+	}
+	for i := 0; i < maxAnchorEvents; i++ {
+		if i >= len(events) {
+			break
+		}
+		event := events[i]
 		if event.EventType != "genesis" && event.EventType != "anchor" {
 			continue
 		}

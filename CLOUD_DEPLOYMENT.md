@@ -1,5 +1,7 @@
 # Vouch: Cloud Deployment & Production Ops
 
+This document is **optional**. Read it only if you plan to run Vouch in Docker/Kubernetes or need production operations guidance.
+
 Vouch is designed to be cloud-native, lightweight, and extremely easy to deploy in production environments.
 
 ## Containerization (Docker)

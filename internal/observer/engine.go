@@ -105,7 +105,9 @@ func (e *ObserverEngine) Watch() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
-		for range ticker.C {
+		const maxWatchTicks = 1 << 30
+		for i := 0; i < maxWatchTicks; i++ {
+			<-ticker.C
 			stat, err := os.Stat(e.configPath)
 			if err != nil {
 				continue
@@ -116,6 +118,9 @@ func (e *ObserverEngine) Watch() {
 					lastMod = stat.ModTime()
 				}
 			}
+		}
+		if err := assert.Check(false, "watch loop exceeded max ticks"); err != nil {
+			return
 		}
 	}()
 }
@@ -167,8 +172,19 @@ func CheckConditions(conditions []map[string]string, params map[string]interface
 	if len(conditions) == 0 {
 		return true
 	}
+	if err := assert.Check(params != nil, "params must not be nil"); err != nil {
+		return false
+	}
+	const maxConditions = 64
+	if err := assert.Check(len(conditions) <= maxConditions, "conditions exceed max: %d", len(conditions)); err != nil {
+		return false
+	}
 
-	for _, cond := range conditions {
+	for i := 0; i < maxConditions; i++ {
+		if i >= len(conditions) {
+			break
+		}
+		cond := conditions[i]
 		key := cond["key"]
 		operator := cond["operator"]
 		value := cond["value"]

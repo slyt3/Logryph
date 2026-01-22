@@ -17,6 +17,7 @@ func CreateGenesisBlock(db EventRepository, signer *crypto.Signer, agentName str
 
 	// Create genesis event
 	genesisEvent := pool.GetEvent()
+	defer pool.PutEvent(genesisEvent)
 	genesisEvent.ID = uuid.New().String()
 	genesisEvent.RunID = runID
 	genesisEvent.SeqIndex = 0

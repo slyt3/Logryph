@@ -19,6 +19,7 @@ import (
 type Worker struct {
 	ringBuffer      *ring.Buffer[*models.Event]
 	signalChan      chan struct{} // Signal to wake up processor
+	quitChan        chan struct{} // Signal to stop background loops
 	db              EventRepository
 	signer          *crypto.Signer
 	runID           string
@@ -27,6 +28,12 @@ type Worker struct {
 	processedEvents atomic.Uint64 // Metrics
 	droppedEvents   atomic.Uint64 // Metrics
 }
+
+const (
+	maxAnchorTicks   = 1 << 30
+	maxSignalBatches = 1 << 30
+	maxDrainEvents   = 1 << 20
+)
 
 // NewWorker creates a new async ledger worker with a buffered channel.
 // It uses dependency injection for the storage layer.
@@ -55,6 +62,7 @@ func NewWorker(bufferSize int, db EventRepository, keyPath string) (*Worker, err
 	return &Worker{
 		ringBuffer: rb,
 		signalChan: make(chan struct{}, 1),
+		quitChan:   make(chan struct{}),
 		db:         db,
 		signer:     signer,
 	}, nil
@@ -109,7 +117,9 @@ func (w *Worker) Start() error {
 // Submit sends an event to the worker for processing (non-blocking)
 func (w *Worker) Submit(event *models.Event) {
 	// NASA Rule: Check preconditions
-	assert.NotNil(event, "event")
+	if err := assert.NotNil(event, "event"); err != nil {
+		return
+	}
 
 	if w.ringBuffer.IsFull() {
 		w.droppedEvents.Add(1)
@@ -139,6 +149,7 @@ func (w *Worker) Stats() (processed, dropped uint64) {
 
 // Close shuts down the worker and releases resources
 func (w *Worker) Close() error {
+	close(w.quitChan)
 	close(w.signalChan)
 	return w.db.Close()
 }
@@ -147,7 +158,7 @@ func (w *Worker) anchorLoop() {
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 
-	for {
+	for i := 0; i < maxAnchorTicks; i++ {
 		select {
 		case <-ticker.C:
 			anchor, err := audit.FetchBitcoinAnchor()
@@ -171,22 +182,31 @@ func (w *Worker) anchorLoop() {
 			event.Params["anchor_time"] = anchor.Timestamp
 
 			w.Submit(event)
-		case <-w.signalChan:
-			// Note: We don't want to exit on signalChan closure if we want to drain,
-			// but we need a clean way to stop anchorLoop.
-			// For MVP, we'll just check if it's closed.
-			// Actually, a dedicated quit channel would be better.
-			// But for now, let's just use signalChan as a proxy for 'active'.
-			// (Refinement: signalChan is for waking up processEvents, not shutdown).
+		case <-w.quitChan:
+			return
 		}
+	}
+	if err := assert.Check(false, "anchor loop exceeded max ticks"); err != nil {
+		return
 	}
 }
 
 // processEvents is the main worker loop
 func (w *Worker) processEvents() {
-	for range w.signalChan {
+	for i := 0; i < maxSignalBatches; i++ {
+		_, ok := <-w.signalChan
+		if !ok {
+			return
+		}
 		// Drain buffer
-		for !w.ringBuffer.IsEmpty() {
+		if err := assert.Check(w.ringBuffer.Cap() <= maxDrainEvents, "ring buffer cap exceeds max: %d", w.ringBuffer.Cap()); err != nil {
+			w.isUnhealthy.Store(true)
+			return
+		}
+		for j := 0; j < maxDrainEvents; j++ {
+			if w.ringBuffer.IsEmpty() {
+				break
+			}
 			event, err := w.ringBuffer.Pop()
 			if err != nil {
 				break
@@ -198,5 +218,8 @@ func (w *Worker) processEvents() {
 			w.processedEvents.Add(1)
 			pool.PutEvent(event)
 		}
+	}
+	if err := assert.Check(false, "processEvents exceeded max signal batches"); err != nil {
+		return
 	}
 }

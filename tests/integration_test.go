@@ -89,7 +89,11 @@ policies:
 	ready := make(chan bool)
 	monitor := func(r io.Reader, name string) {
 		scanner := bufio.NewScanner(r)
-		for scanner.Scan() {
+		const maxLogLines = 10000
+		for i := 0; i < maxLogLines; i++ {
+			if !scanner.Scan() {
+				break
+			}
 			line := scanner.Text()
 			fmt.Printf("[%s] %s\n", name, line)
 			if strings.Contains(line, "Admin API:") {

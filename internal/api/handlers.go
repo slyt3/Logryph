@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/core"
 	"github.com/slyt3/Vouch/internal/pool"
 )
@@ -19,6 +21,17 @@ func NewHandlers(engine *core.Engine) *Handlers {
 }
 
 func (h *Handlers) HandleRekey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	adminToken := os.Getenv("VOUCH_ADMIN_TOKEN")
+	if adminToken != "" {
+		if r.Header.Get("X-Admin-Token") != adminToken {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
 	oldPubKey, newPubKey, err := h.Core.Worker.GetSigner().RotateKey(".vouch_key")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -42,10 +55,17 @@ func (h *Handlers) HandlePrometheus(w http.ResponseWriter, r *http.Request) {
 	poolMetrics := pool.GetMetrics()
 	proc, drop := h.Core.Worker.Stats()
 	tasks := 0
+	const maxActiveTasks = 10000
 	h.Core.ActiveTasks.Range(func(_, _ interface{}) bool {
+		if tasks >= maxActiveTasks {
+			return false
+		}
 		tasks++
 		return true
 	})
+	if err := assert.Check(tasks <= maxActiveTasks, "active tasks exceeded cap: %d", tasks); err != nil {
+		// Recovery: cap already enforced, no further action required.
+	}
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	fmt.Fprintf(w, "# HELP vouch_pool_event_hits_total Total hits on the event pool\n")
