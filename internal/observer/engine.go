@@ -2,7 +2,6 @@ package observer
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/slyt3/Vouch/internal/assert"
+	"github.com/slyt3/Vouch/internal/logging"
 	"gopkg.in/yaml.v3"
 )
 
@@ -93,7 +93,7 @@ func (e *ObserverEngine) Reload() error {
 	e.config = newConfig
 	e.mu.Unlock()
 
-	log.Printf("[INFO] Policy reloaded from %s", e.configPath)
+	logging.Info("policy_reloaded", logging.Fields{Component: "observer"})
 	return nil
 }
 

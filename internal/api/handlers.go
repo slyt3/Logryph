@@ -3,13 +3,13 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/core"
+	"github.com/slyt3/Vouch/internal/logging"
 	"github.com/slyt3/Vouch/internal/pool"
 )
 
@@ -40,7 +40,7 @@ func (h *Handlers) HandleRekey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := fmt.Fprintf(w, "Key rotated\nOld: %s\nNew: %s", oldPubKey, newPubKey); err != nil {
-		log.Printf("Failed to write response: %v", err)
+		logging.Error("rekey_response_write_failed", logging.Fields{Component: "api", Error: err.Error()})
 	}
 }
 
@@ -48,7 +48,7 @@ func (h *Handlers) HandleStats(w http.ResponseWriter, r *http.Request) {
 	metrics := pool.GetMetrics()
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(metrics); err != nil {
-		log.Printf("Failed to encode JSON: %v", err)
+		logging.Error("stats_encode_failed", logging.Fields{Component: "api", Error: err.Error()})
 	}
 }
 
@@ -64,7 +64,7 @@ func (h *Handlers) HandlePrometheus(w http.ResponseWriter, r *http.Request) {
 	queueDepth, queueCap := h.Core.Worker.QueueDepth()
 	latency := h.Core.Worker.LatencyMetrics()
 	if err := assert.Check(queueCap >= 0, "queue capacity must be non-negative"); err != nil {
-		log.Printf("[WARN] queue capacity invalid: %d", queueCap)
+		logging.Warn("queue_capacity_invalid", logging.Fields{Component: "api", Error: err.Error()})
 	}
 	tasks := 0
 	const maxActiveTasks = 10000
@@ -76,7 +76,7 @@ func (h *Handlers) HandlePrometheus(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	if err := assert.Check(tasks <= maxActiveTasks, "active tasks exceeded cap: %d", tasks); err != nil {
-		log.Printf("[WARN] active tasks exceeded cap: %d", tasks)
+		logging.Warn("active_tasks_exceeded", logging.Fields{Component: "api", Error: err.Error()})
 	}
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")

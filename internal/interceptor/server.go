@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/core"
+	"github.com/slyt3/Vouch/internal/logging"
 	"github.com/slyt3/Vouch/internal/mcp"
 	"github.com/slyt3/Vouch/internal/observer"
 	"github.com/slyt3/Vouch/internal/pool"
@@ -56,7 +56,7 @@ func (i *Interceptor) InterceptRequest(req *http.Request) {
 	defer pool.PutBuffer(buf)
 
 	if _, err := buf.ReadFrom(req.Body); err != nil {
-		log.Printf("Failed to read request body: %v", err)
+		logging.Error("request_body_read_failed", logging.Fields{Component: "interceptor", Error: err.Error()})
 		return
 	}
 	bodyBytes := buf.Bytes()
@@ -68,10 +68,15 @@ func (i *Interceptor) InterceptRequest(req *http.Request) {
 		i.SendErrorResponse(req, http.StatusBadRequest, -32000, err.Error())
 		return
 	}
+	requestID := ""
+	if mcpReq.ID != nil {
+		requestID = fmt.Sprint(mcpReq.ID)
+	}
 
 	// 2. Policy Evaluation
 	action, matchedRule, err := i.evaluatePolicy(method, mcpReq.Params)
 	if err != nil {
+		logging.Warn("policy_evaluation_failed", logging.Fields{Component: "interceptor", RequestID: requestID, TaskID: taskID, Method: method, Error: err.Error()})
 		i.SendErrorResponse(req, http.StatusBadRequest, -32000, "Policy violation")
 		return
 	}
@@ -84,13 +89,15 @@ func (i *Interceptor) InterceptRequest(req *http.Request) {
 	if action == ActionRedact && matchedRule != nil {
 		scrubbedBody, err := i.redactSensitiveData(bodyBytes, matchedRule.Redact)
 		if err != nil {
-			log.Printf("Redaction failed: %v", err)
+			logging.Error("redaction_failed", logging.Fields{Component: "interceptor", RequestID: requestID, TaskID: taskID, Method: method, PolicyID: matchedRule.ID, RiskLevel: matchedRule.RiskLevel, Error: err.Error()})
 			i.SendErrorResponse(req, http.StatusInternalServerError, -32000, "Redaction failed")
 			return
 		}
 		bodyBytes = scrubbedBody
 		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
+
+	logging.Info("request_observed", logging.Fields{Component: "interceptor", RequestID: requestID, TaskID: taskID, Method: method, PolicyID: policyIDOrEmpty(matchedRule), RiskLevel: riskLevelOrEmpty(matchedRule)})
 
 	// 5. Submit Event & Forward
 	i.submitToolCallEvent(taskID, mcpReq, matchedRule)
@@ -200,7 +207,7 @@ func (i *Interceptor) submitToolCallEvent(taskID string, mcpReq *mcp.MCPRequest,
 				event.ParentID = pid
 			} else {
 				if err := assert.Check(false, "parentID has unexpected type for taskID=%s", taskID); err != nil {
-					log.Printf("[WARN] parentID type mismatch for taskID=%s", taskID)
+					logging.Warn("parent_id_type_mismatch", logging.Fields{Component: "interceptor", TaskID: taskID})
 				}
 			}
 		}
@@ -259,6 +266,11 @@ func (i *Interceptor) InterceptResponse(resp *http.Response) error {
 		return nil
 	}
 
+	requestID := ""
+	if mcpResp.ID != nil {
+		requestID = fmt.Sprint(mcpResp.ID)
+	}
+
 	if !i.Core.Worker.IsHealthy() {
 		return nil
 	}
@@ -278,6 +290,8 @@ func (i *Interceptor) InterceptResponse(resp *http.Response) error {
 		}
 	}
 
+	logging.Info("response_observed", logging.Fields{Component: "interceptor", RequestID: requestID, TaskID: taskID})
+
 	event := pool.GetEvent()
 	event.ID = uuid.New().String()[:8]
 	event.Timestamp = time.Now()
@@ -294,4 +308,30 @@ func (i *Interceptor) InterceptResponse(resp *http.Response) error {
 // In Phase 2 (Lobotomy), we are a passive recorder and do not block traffic.
 func (i *Interceptor) SendErrorResponse(req *http.Request, statusCode int, code int, message string) {
 	// Passive: We do not block. We just log the failure to record if needed.
+}
+
+func policyIDOrEmpty(rule *observer.Rule) string {
+	if rule == nil {
+		return ""
+	}
+	if err := assert.Check(rule.ID != "", "policy ID missing"); err != nil {
+		return ""
+	}
+	if err := assert.Check(len(rule.ID) <= 128, "policy ID too long: %d", len(rule.ID)); err != nil {
+		return ""
+	}
+	return rule.ID
+}
+
+func riskLevelOrEmpty(rule *observer.Rule) string {
+	if rule == nil {
+		return ""
+	}
+	if err := assert.Check(rule.RiskLevel != "", "risk level missing"); err != nil {
+		return ""
+	}
+	if err := assert.Check(len(rule.RiskLevel) <= 32, "risk level too long: %d", len(rule.RiskLevel)); err != nil {
+		return ""
+	}
+	return rule.RiskLevel
 }

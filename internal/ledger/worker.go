@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/slyt3/Vouch/internal/assert"
 	"github.com/slyt3/Vouch/internal/crypto"
 	"github.com/slyt3/Vouch/internal/ledger/audit"
+	"github.com/slyt3/Vouch/internal/logging"
 	"github.com/slyt3/Vouch/internal/models"
 	"github.com/slyt3/Vouch/internal/pool"
 	"github.com/slyt3/Vouch/internal/ring"
@@ -129,14 +129,14 @@ func (w *Worker) Start() error {
 			return fmt.Errorf("creating genesis block: %w", err)
 		}
 		w.runID = runID
-		log.Printf("Genesis block created (Run ID: %s)", runID[:8])
+		logging.Info("genesis_created", logging.Fields{Component: "worker", RunID: runID})
 	} else {
 		runID, err := w.db.GetRunID()
 		if err != nil {
 			return fmt.Errorf("loading run ID: %w", err)
 		}
 		w.runID = runID
-		log.Printf("Loaded existing run (Run ID: %s)", runID[:8])
+		logging.Info("run_loaded", logging.Fields{Component: "worker", RunID: runID})
 	}
 
 	w.processor = NewEventProcessor(w.db, w.signer, w.runID)
@@ -168,20 +168,20 @@ func (w *Worker) Submit(event *models.Event) {
 	}
 	if w.closing.Load() {
 		w.droppedEvents.Add(1)
-		log.Printf("[WARN] Worker shutting down, dropping event %s", event.ID)
+		logging.Warn("event_dropped_shutdown", logging.Fields{Component: "worker", EventID: event.ID, TaskID: event.TaskID})
 		return
 	}
 
 	if w.ringBuffer.IsFull() {
 		w.droppedEvents.Add(1)
-		log.Printf("[BACKPRESSURE] Ring buffer full, dropping event %s", event.ID)
+		logging.Warn("event_dropped_backpressure", logging.Fields{Component: "worker", EventID: event.ID, TaskID: event.TaskID})
 		// Option: In Strict Mode, we would block here.
 		// For MVP Asyn Mode, we drop.
 		return
 	}
 
 	if err := w.ringBuffer.Push(event); err != nil {
-		log.Printf("[ERROR] Failed to push to ring buffer: %v", err)
+		logging.Error("ring_buffer_push_failed", logging.Fields{Component: "worker", Error: err.Error()})
 		return
 	}
 
@@ -259,7 +259,7 @@ func (w *Worker) Shutdown(timeout time.Duration) error {
 	})
 
 	if err := w.waitForStop(timeout); err != nil {
-		log.Printf("[WARN] worker shutdown wait: %v", err)
+		logging.Warn("shutdown_wait_timeout", logging.Fields{Component: "worker", Error: err.Error()})
 	}
 	if err := w.drainBuffer(); err != nil {
 		return err
@@ -329,7 +329,7 @@ func (w *Worker) drainBuffer() error {
 		}
 		start := time.Now()
 		if err := w.processor.ProcessEvent(event); err != nil {
-			log.Printf("[CRITICAL] Event Processing Failure: %v", err)
+			logging.Critical("event_processing_failed", logging.Fields{Component: "worker", EventID: event.ID, TaskID: event.TaskID, Error: err.Error()})
 			w.isUnhealthy.Store(true)
 		}
 		w.recordLatency(time.Since(start))
@@ -348,7 +348,7 @@ func (w *Worker) anchorLoop() {
 		case <-ticker.C:
 			anchor, err := audit.FetchBitcoinAnchor()
 			if err != nil {
-				log.Printf("[WARN] Periodic anchor fetch failed: %v", err)
+				logging.Warn("anchor_fetch_failed", logging.Fields{Component: "worker", Error: err.Error()})
 				continue
 			}
 
@@ -398,7 +398,7 @@ func (w *Worker) processEvents() {
 			}
 			start := time.Now()
 			if err := w.processor.ProcessEvent(event); err != nil {
-				log.Printf("[CRITICAL] Event Processing Failure: %v", err)
+				logging.Critical("event_processing_failed", logging.Fields{Component: "worker", EventID: event.ID, TaskID: event.TaskID, Error: err.Error()})
 				w.isUnhealthy.Store(true)
 			}
 			w.recordLatency(time.Since(start))
