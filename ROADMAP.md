@@ -72,16 +72,17 @@ Focus: reliability, observability, and evidence integrity for early adopters.
   - Logs include request_id and task_id when available
 
 8) Health and readiness probes
-- Status: Planned
+- Status: Done
 - Scope: `/healthz` and `/readyz`
 - Acceptance:
   - Readiness fails if signer or DB is unavailable
 
 9) Backpressure strategy
-- Status: Planned
-- Scope: configurable drop vs block policy, alerting
+- Status: Done
+- Scope: configurable drop vs block policy, metrics
 - Acceptance:
   - Backpressure strategy is configurable and observable
+  - Prometheus exposes backpressure mode and blocked submit counters
 
 ---
 

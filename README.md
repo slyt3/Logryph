@@ -18,8 +18,12 @@ go build -o vouch-cli cmd/vouch-cli/main.go
 
 ### 2. Start Recording
 ```bash
-./vouch --target http://localhost:8080 --port 9999
+./vouch --target http://localhost:8080 --port 9999 --backpressure drop
 ```
+
+Backpressure strategies:
+- `drop` (default): fail-open, events are dropped when the buffer is full
+- `block`: fail-closed, requests block until buffer space is available
 
 ### 3. Investigate
 ```bash

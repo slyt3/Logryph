@@ -133,14 +133,16 @@ func (h *Handlers) HandlePrometheus(w http.ResponseWriter, r *http.Request) {
 
 // prometheusMetrics holds all metrics for Prometheus export
 type prometheusMetrics struct {
-	PoolEventHits   uint64
-	PoolEventMisses uint64
-	EventsProcessed uint64
-	EventsDropped   uint64
-	ActiveTasks     int
-	QueueDepth      int
-	QueueCapacity   int
-	LatencyMetrics  LatencySnapshot
+	PoolEventHits    uint64
+	PoolEventMisses  uint64
+	EventsProcessed  uint64
+	EventsDropped    uint64
+	EventsBlocked    uint64
+	BackpressureMode string
+	ActiveTasks      int
+	QueueDepth       int
+	QueueCapacity    int
+	LatencyMetrics   LatencySnapshot
 }
 
 // collectMetrics gathers all metrics from the system
@@ -151,11 +153,20 @@ func (h *Handlers) collectMetrics() *prometheusMetrics {
 	if err := assert.NotNil(h.Core, "core"); err != nil {
 		return &prometheusMetrics{}
 	}
+	if err := assert.NotNil(h.Core.Worker, "worker"); err != nil {
+		return &prometheusMetrics{}
+	}
 
 	poolMetrics := pool.GetMetrics()
 	proc, drop := h.Core.Worker.Stats()
 	queueDepth, queueCap := h.Core.Worker.QueueDepth()
 	latency := h.Core.Worker.LatencyMetrics()
+	blocked := h.Core.Worker.BlockedSubmits()
+	mode := h.Core.Worker.BackpressureMode()
+	modeLabel := "drop"
+	if mode == ledger.BackpressureBlock {
+		modeLabel = "block"
+	}
 
 	if err := assert.Check(queueCap >= 0, "queue capacity must be non-negative"); err != nil {
 		logging.Warn("queue_capacity_invalid", logging.Fields{Component: "api", Error: err.Error()})
@@ -175,14 +186,16 @@ func (h *Handlers) collectMetrics() *prometheusMetrics {
 	}
 
 	return &prometheusMetrics{
-		PoolEventHits:   poolMetrics.EventHits,
-		PoolEventMisses: poolMetrics.EventMisses,
-		EventsProcessed: proc,
-		EventsDropped:   drop,
-		ActiveTasks:     tasks,
-		QueueDepth:      queueDepth,
-		QueueCapacity:   queueCap,
-		LatencyMetrics:  latency,
+		PoolEventHits:    poolMetrics.EventHits,
+		PoolEventMisses:  poolMetrics.EventMisses,
+		EventsProcessed:  proc,
+		EventsDropped:    drop,
+		EventsBlocked:    blocked,
+		BackpressureMode: modeLabel,
+		ActiveTasks:      tasks,
+		QueueDepth:       queueDepth,
+		QueueCapacity:    queueCap,
+		LatencyMetrics:   latency,
 	}
 }
 
@@ -210,6 +223,14 @@ func (h *Handlers) formatPrometheusText(w http.ResponseWriter, m *prometheusMetr
 	fmt.Fprintf(w, "# HELP vouch_ledger_events_dropped_total Total events dropped due to backpressure\n")
 	fmt.Fprintf(w, "# TYPE vouch_ledger_events_dropped_total counter\n")
 	fmt.Fprintf(w, "vouch_ledger_events_dropped_total %d\n", m.EventsDropped)
+
+	fmt.Fprintf(w, "# HELP vouch_ledger_events_blocked_total Total submit attempts blocked by backpressure\n")
+	fmt.Fprintf(w, "# TYPE vouch_ledger_events_blocked_total counter\n")
+	fmt.Fprintf(w, "vouch_ledger_events_blocked_total %d\n", m.EventsBlocked)
+
+	fmt.Fprintf(w, "# HELP vouch_ledger_backpressure_mode Current backpressure mode (drop|block)\n")
+	fmt.Fprintf(w, "# TYPE vouch_ledger_backpressure_mode gauge\n")
+	fmt.Fprintf(w, "vouch_ledger_backpressure_mode{mode=\"%s\"} 1\n", m.BackpressureMode)
 
 	fmt.Fprintf(w, "# HELP vouch_engine_active_tasks_total Number of currently active causal tasks\n")
 	fmt.Fprintf(w, "# TYPE vouch_engine_active_tasks_total gauge\n")

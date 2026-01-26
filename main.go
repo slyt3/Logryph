@@ -31,6 +31,7 @@ func main() {
 	configPath := flag.String("config", "vouch-policy.yaml", "path to policy configuration")
 	target := flag.String("target", "http://localhost:8080", "target tool server URL")
 	listenPort := flag.Int("port", 9999, "port to listen on")
+	backpressure := flag.String("backpressure", "drop", "backpressure strategy: 'drop' (fail-open) or 'block' (fail-closed)")
 	flag.Parse()
 
 	if err := assert.Check(*target != "", "target must not be empty"); err != nil {
@@ -55,6 +56,19 @@ func main() {
 	worker, err := ledger.NewWorker(1000, db, ".vouch_key")
 	if err != nil {
 		log.Fatalf("Worker init failed: %v", err)
+	}
+	if *backpressure == "block" {
+		if err := worker.SetBackpressureMode(ledger.BackpressureBlock); err != nil {
+			log.Fatalf("Failed to set backpressure mode: %v", err)
+		}
+		log.Printf("Backpressure mode: BLOCK (fail-closed) - requests will block if buffer is full")
+	} else if *backpressure == "drop" {
+		if err := worker.SetBackpressureMode(ledger.BackpressureDrop); err != nil {
+			log.Fatalf("Failed to set backpressure mode: %v", err)
+		}
+		log.Printf("Backpressure mode: DROP (fail-open, default) - events dropped if buffer is full")
+	} else {
+		log.Fatalf("Invalid backpressure mode '%s': must be 'drop' or 'block'", *backpressure)
 	}
 	if err := worker.Start(); err != nil {
 		log.Fatalf("Worker start failed: %v", err)

@@ -16,26 +16,39 @@ import (
 	"github.com/slyt3/Vouch/internal/ring"
 )
 
+// BackpressureMode defines how the worker handles full ring buffer scenarios.
+type BackpressureMode int
+
+const (
+	// BackpressureDrop drops events when buffer is full (fail-open, default).
+	BackpressureDrop BackpressureMode = iota
+	// BackpressureBlock blocks Submit() until space is available (fail-closed).
+	BackpressureBlock
+)
+
 // Worker processes events asynchronously via a ring buffer and background goroutine.
-// Submissions are non-blocking - if the buffer is full, events are dropped and metrics
-// are incremented. This ensures agent traffic is never blocked (fail-open behavior).
+// Submissions are non-blocking by default - if the buffer is full, events are dropped
+// and metrics are incremented. This ensures agent traffic is never blocked (fail-open).
+// Set backpressureMode to BackpressureBlock for fail-closed behavior.
 type Worker struct {
-	ringBuffer      *ring.Buffer[*models.Event]
-	signalChan      chan struct{} // Signal to wake up processor
-	quitChan        chan struct{} // Signal to stop background loops
-	db              EventRepository
-	signer          *crypto.Signer
-	runID           string
-	processor       *EventProcessor
-	isUnhealthy     atomic.Bool   // Health sentinel
-	processedEvents atomic.Uint64 // Metrics
-	droppedEvents   atomic.Uint64 // Metrics
-	latencySumNs    atomic.Uint64 // Latency sum (ns)
-	latencyCount    atomic.Uint64 // Latency count
-	latencyBuckets  [maxLatencyBuckets]atomic.Uint64
-	closing         atomic.Bool // Shutdown sentinel
-	wg              sync.WaitGroup
-	shutdownOnce    sync.Once
+	ringBuffer       *ring.Buffer[*models.Event]
+	signalChan       chan struct{} // Signal to wake up processor
+	quitChan         chan struct{} // Signal to stop background loops
+	db               EventRepository
+	signer           *crypto.Signer
+	runID            string
+	processor        *EventProcessor
+	backpressureMode BackpressureMode
+	isUnhealthy      atomic.Bool   // Health sentinel
+	processedEvents  atomic.Uint64 // Metrics
+	droppedEvents    atomic.Uint64 // Metrics
+	blockedSubmits   atomic.Uint64 // Count of blocked Submit() calls
+	latencySumNs     atomic.Uint64 // Latency sum (ns)
+	latencyCount     atomic.Uint64 // Latency count
+	latencyBuckets   [maxLatencyBuckets]atomic.Uint64
+	closing          atomic.Bool // Shutdown sentinel
+	wg               sync.WaitGroup
+	shutdownOnce     sync.Once
 }
 
 const (
@@ -70,6 +83,7 @@ type LatencySnapshot struct {
 // Returns an error if bufferSize <= 0, db is nil, or keyPath is empty.
 // The worker must be started with Start() and stopped with Shutdown() for graceful cleanup.
 // Uses dependency injection for storage layer to enable testing with mock repositories.
+// Default backpressure mode is BackpressureDrop (fail-open).
 func NewWorker(bufferSize int, db EventRepository, keyPath string) (*Worker, error) {
 	// NASA Rule: Check all parameters
 	if err := assert.Check(bufferSize > 0, "buffer size must be positive"); err != nil {
@@ -93,12 +107,56 @@ func NewWorker(bufferSize int, db EventRepository, keyPath string) (*Worker, err
 	}
 
 	return &Worker{
-		ringBuffer: rb,
-		signalChan: make(chan struct{}, 1),
-		quitChan:   make(chan struct{}),
-		db:         db,
-		signer:     signer,
+		ringBuffer:       rb,
+		signalChan:       make(chan struct{}, 1),
+		quitChan:         make(chan struct{}),
+		db:               db,
+		signer:           signer,
+		backpressureMode: BackpressureDrop, // Default: fail-open
 	}, nil
+}
+
+// SetBackpressureMode configures how Submit() handles full ring buffer.
+// Must be called before Start(). Returns error if mode is invalid.
+func (w *Worker) SetBackpressureMode(mode BackpressureMode) error {
+	if err := assert.NotNil(w, "worker"); err != nil {
+		return err
+	}
+	if err := assert.Check(mode == BackpressureDrop || mode == BackpressureBlock, "invalid backpressure mode"); err != nil {
+		return err
+	}
+	w.backpressureMode = mode
+	modeLabel := "drop"
+	if mode == BackpressureBlock {
+		modeLabel = "block"
+	}
+	logging.Info("backpressure_mode_set", logging.Fields{
+		Component: "worker",
+		Method:    "backpressure_mode",
+		RiskLevel: modeLabel,
+	})
+	return nil
+}
+
+// BackpressureMode returns the current backpressure handling mode.
+func (w *Worker) BackpressureMode() BackpressureMode {
+	if err := assert.NotNil(w, "worker"); err != nil {
+		return BackpressureDrop
+	}
+	mode := w.backpressureMode
+	if err := assert.Check(mode == BackpressureDrop || mode == BackpressureBlock, "invalid backpressure mode"); err != nil {
+		return BackpressureDrop
+	}
+	return mode
+}
+
+// BlockedSubmits returns the number of times Submit() had to wait due to backpressure.
+func (w *Worker) BlockedSubmits() uint64 {
+	if err := assert.NotNil(w, "worker"); err != nil {
+		return 0
+	}
+	count := w.blockedSubmits.Load()
+	return count
 }
 
 func (w *Worker) GetDB() EventRepository {
@@ -178,12 +236,34 @@ func (w *Worker) Submit(event *models.Event) {
 		return
 	}
 
-	if w.ringBuffer.IsFull() {
-		w.droppedEvents.Add(1)
-		logging.Warn("event_dropped_backpressure", logging.Fields{Component: "worker", EventID: event.ID, TaskID: event.TaskID})
-		// Option: In Strict Mode, we would block here.
-		// For MVP Asyn Mode, we drop.
-		return
+	// Backpressure handling based on configured mode
+	if w.backpressureMode == BackpressureBlock {
+		// Blocking mode: wait until space is available
+		const maxBlockAttempts = 1000
+		for i := 0; i < maxBlockAttempts; i++ {
+			if !w.ringBuffer.IsFull() {
+				break
+			}
+			if w.closing.Load() {
+				w.droppedEvents.Add(1)
+				logging.Warn("event_dropped_shutdown_blocking", logging.Fields{Component: "worker", EventID: event.ID})
+				return
+			}
+			w.blockedSubmits.Add(1)
+			time.Sleep(1 * time.Millisecond)
+		}
+		if w.ringBuffer.IsFull() {
+			w.droppedEvents.Add(1)
+			logging.Error("event_dropped_block_timeout", logging.Fields{Component: "worker", EventID: event.ID})
+			return
+		}
+	} else {
+		// Drop mode: fail-open, drop event if buffer full
+		if w.ringBuffer.IsFull() {
+			w.droppedEvents.Add(1)
+			logging.Warn("event_dropped_backpressure", logging.Fields{Component: "worker", EventID: event.ID, TaskID: event.TaskID})
+			return
+		}
 	}
 
 	if err := w.ringBuffer.Push(event); err != nil {

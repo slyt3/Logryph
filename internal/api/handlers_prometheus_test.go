@@ -35,6 +35,12 @@ func TestHandlePrometheusIncludesQueueAndLatency(t *testing.T) {
 	if !strings.Contains(body, "vouch_ledger_event_latency_seconds_bucket") {
 		t.Fatalf("missing latency histogram bucket")
 	}
+	if !strings.Contains(body, "vouch_ledger_events_blocked_total") {
+		t.Fatalf("missing blocked events metric")
+	}
+	if !strings.Contains(body, "vouch_ledger_backpressure_mode") {
+		t.Fatalf("missing backpressure mode metric")
+	}
 }
 
 func TestHandlePrometheusLatencyCountAndSum(t *testing.T) {
