@@ -34,7 +34,9 @@ const (
 	maxParams     = 256
 )
 
-// Interceptor handles the proxy interception logic
+// Interceptor handles HTTP proxy interception and MCP JSON-RPC request/response capture.
+// It evaluates policies, applies redaction rules, and submits events to the ledger
+// without blocking agent traffic (fail-open behavior).
 type Interceptor struct {
 	Core *core.Engine
 }
@@ -43,6 +45,9 @@ func NewInterceptor(engine *core.Engine) *Interceptor {
 	return &Interceptor{Core: engine}
 }
 
+// InterceptRequest captures HTTP POST requests, extracts MCP metadata, evaluates policies,
+// applies redaction rules, and submits events to the async worker.
+// Returns immediately without blocking proxy traffic. Drops events on backpressure.
 func (i *Interceptor) InterceptRequest(req *http.Request) {
 	if req.Method != http.MethodPost {
 		return
@@ -266,7 +271,9 @@ func (i *Interceptor) redactSensitiveData(body []byte, keys []string) ([]byte, e
 	return json.Marshal(mcpReq)
 }
 
-// InterceptResponse intercepts and analyzes responses
+// InterceptResponse captures HTTP responses, extracts task_id and state from MCP results,
+// and submits tool_response events to the ledger. Returns nil on JSON parse errors
+// to maintain fail-open behavior.
 func (i *Interceptor) InterceptResponse(resp *http.Response) error {
 	buf := pool.GetBuffer()
 	defer pool.PutBuffer(buf)
@@ -320,8 +327,9 @@ func (i *Interceptor) InterceptResponse(resp *http.Response) error {
 	return nil
 }
 
-// SendErrorResponse was used to block requests (Phase 1).
-// In Phase 2 (Lobotomy), we are a passive recorder and do not block traffic.
+// SendErrorResponse is a no-op stub retained for backwards compatibility.
+// Phase 2 (Lobotomy) removed request blocking - Vouch now operates as a passive recorder.
+// Does not send HTTP errors or block traffic.
 func (i *Interceptor) SendErrorResponse(req *http.Request, statusCode int, code int, message string) {
 	// Passive: We do not block. We just log the failure to record if needed.
 }

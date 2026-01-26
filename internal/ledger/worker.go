@@ -16,7 +16,9 @@ import (
 	"github.com/slyt3/Vouch/internal/ring"
 )
 
-// Worker processes events asynchronously without blocking the proxy
+// Worker processes events asynchronously via a ring buffer and background goroutine.
+// Submissions are non-blocking - if the buffer is full, events are dropped and metrics
+// are incremented. This ensures agent traffic is never blocked (fail-open behavior).
 type Worker struct {
 	ringBuffer      *ring.Buffer[*models.Event]
 	signalChan      chan struct{} // Signal to wake up processor
@@ -54,7 +56,9 @@ var latencyBucketUpperNs = [maxLatencyBuckets]uint64{
 	^uint64(0),
 }
 
-// LatencySnapshot captures event processing latency metrics.
+// LatencySnapshot captures event processing latency metrics with histogram buckets.
+// BoundsNs defines upper bounds in nanoseconds, Counts tracks events per bucket,
+// SumNs is total latency, Count is total number of events processed.
 type LatencySnapshot struct {
 	BoundsNs [maxLatencyBuckets]uint64
 	Counts   [maxLatencyBuckets]uint64
@@ -62,8 +66,10 @@ type LatencySnapshot struct {
 	Count    uint64
 }
 
-// NewWorker creates a new async ledger worker with a buffered channel.
-// It uses dependency injection for the storage layer.
+// NewWorker creates a new async ledger worker with the specified ring buffer size.
+// Returns an error if bufferSize <= 0, db is nil, or keyPath is empty.
+// The worker must be started with Start() and stopped with Shutdown() for graceful cleanup.
+// Uses dependency injection for storage layer to enable testing with mock repositories.
 func NewWorker(bufferSize int, db EventRepository, keyPath string) (*Worker, error) {
 	// NASA Rule: Check all parameters
 	if err := assert.Check(bufferSize > 0, "buffer size must be positive"); err != nil {

@@ -4,7 +4,9 @@ import (
 	"time"
 )
 
-// Event represents a single intercepted action in the agent's execution
+// Event represents a single intercepted MCP JSON-RPC action in the agent's execution.
+// Includes cryptographic chain fields (PrevHash, CurrentHash, Signature) for forensic integrity.
+// Use pool.GetEvent() to acquire instances for zero-allocation hot paths.
 type Event struct {
 	ID          string                 `json:"id"`
 	RunID       string                 `json:"run_id"`

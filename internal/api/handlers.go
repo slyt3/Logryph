@@ -17,14 +17,21 @@ import (
 // LatencySnapshot is aliased from ledger package for clarity
 type LatencySnapshot = ledger.LatencySnapshot
 
+// Handlers provides HTTP endpoints for admin operations, metrics, and health probes.
+// All handlers are mounted on the admin server (default :9998).
 type Handlers struct {
 	Core *core.Engine
 }
 
+// NewHandlers creates a new handlers instance with the provided core engine.
+// The engine must contain an initialized Worker for metrics and health checks.
 func NewHandlers(engine *core.Engine) *Handlers {
 	return &Handlers{Core: engine}
 }
 
+// HandleRekey rotates the Ed25519 signing key and returns the new public key.
+// Requires POST method and X-Admin-Token header if VOUCH_ADMIN_TOKEN is set.
+// Returns 405 for non-POST, 401 for missing/invalid token, 500 on rotation failure.
 func (h *Handlers) HandleRekey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -48,6 +55,8 @@ func (h *Handlers) HandleRekey(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HandleStats returns pool metrics (event/buffer hits and misses) as JSON.
+// Always returns 200 OK with pool statistics.
 func (h *Handlers) HandleStats(w http.ResponseWriter, r *http.Request) {
 	metrics := pool.GetMetrics()
 	w.Header().Set("Content-Type", "application/json")
@@ -56,6 +65,8 @@ func (h *Handlers) HandleStats(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HandleHealth is a Kubernetes liveness probe endpoint.
+// Always returns 200 OK to indicate the process is alive.
 func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	if err := assert.NotNil(h, "handlers"); err != nil {
 		return
@@ -66,6 +77,9 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HandleReady is a Kubernetes readiness probe endpoint.
+// Returns 200 OK only if worker is healthy, signer is available, and database is available.
+// Returns 503 Service Unavailable if any dependency is not ready.
 func (h *Handlers) HandleReady(w http.ResponseWriter, r *http.Request) {
 	if err := assert.NotNil(h, "handlers"); err != nil {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
@@ -101,6 +115,9 @@ func (h *Handlers) HandleReady(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HandlePrometheus exports metrics in Prometheus text format.
+// Includes counters (events processed/dropped), gauges (queue depth, active tasks),
+// and histograms (processing latency buckets).
 func (h *Handlers) HandlePrometheus(w http.ResponseWriter, r *http.Request) {
 	if err := assert.NotNil(h, "handlers"); err != nil {
 		return

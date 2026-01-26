@@ -9,7 +9,9 @@ import (
 	"github.com/slyt3/Vouch/internal/models"
 )
 
-// Metrics tracks pool performance
+// Metrics tracks pool performance with hit/miss counters for events and buffers.
+// EventHits/EventMisses track event pool reuse, BufferHits/BufferMisses track buffer pool reuse.
+// Higher hit rates indicate better memory efficiency.
 type Metrics struct {
 	EventHits    uint64
 	EventMisses  uint64
@@ -21,7 +23,8 @@ var globalMetrics Metrics
 
 const maxEventFields = 256
 
-// GetMetrics returns a copy of the current pool metrics
+// GetMetrics returns a snapshot of current pool metrics.
+// Safe for concurrent access. Use for monitoring zero-allocation performance.
 func GetMetrics() Metrics {
 	return Metrics{
 		EventHits:    atomic.LoadUint64(&globalMetrics.EventHits),
@@ -40,7 +43,9 @@ var eventPool = sync.Pool{
 	},
 }
 
-// GetEvent acquires an event from the pool
+// GetEvent acquires an event from the pool for zero-allocation hot path.
+// Returns a clean Event with pre-allocated Params map. Always defer PutEvent() to avoid leaks.
+// Increments EventHits metric.
 func GetEvent() *models.Event {
 	if err := assert.Check(eventPool.New != nil, "eventPool.New must be defined"); err != nil {
 		return &models.Event{}
@@ -55,7 +60,9 @@ func GetEvent() *models.Event {
 	return e
 }
 
-// PutEvent returns an event to the pool after resetting it
+// PutEvent returns an event to the pool after clearing all fields to prevent data leakage.
+// Safe to call with nil (no-op). Must be called after GetEvent() to avoid memory leaks.
+// Does NOT return events with oversized maps (maxEventFields check).
 func PutEvent(e *models.Event) {
 	if e == nil {
 		return
@@ -124,7 +131,9 @@ var bufferPool = sync.Pool{
 
 const maxBufferSize = 1024 * 1024 // 1MB limit for pooling
 
-// GetBuffer acquires a buffer from the pool
+// GetBuffer acquires a bytes.Buffer from the pool for zero-allocation I/O.
+// Pre-allocated with 4KB capacity. Always defer PutBuffer() to avoid leaks.
+// Increments BufferHits metric.
 func GetBuffer() *bytes.Buffer {
 	if err := assert.Check(bufferPool.New != nil, "bufferPool.New must be defined"); err != nil {
 		return bytes.NewBuffer(nil)
@@ -133,7 +142,9 @@ func GetBuffer() *bytes.Buffer {
 	return bufferPool.Get().(*bytes.Buffer)
 }
 
-// PutBuffer returns a buffer to the pool after resetting it
+// PutBuffer returns a buffer to the pool after resetting it.
+// Safe to call with nil (no-op). Drops buffers exceeding maxBufferSize (1MB) to prevent bloat.
+// Must be called after GetBuffer() to avoid memory leaks.
 func PutBuffer(b *bytes.Buffer) {
 	if b == nil {
 		return

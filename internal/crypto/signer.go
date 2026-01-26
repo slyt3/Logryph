@@ -8,13 +8,17 @@ import (
 	"os"
 )
 
-// Signer handles Ed25519 signing operations
+// Signer handles Ed25519 signing operations for cryptographic event integrity.
+// Private key is stored hex-encoded in a file (default .vouch_key).
+// Thread-safe for concurrent signature operations.
 type Signer struct {
 	privateKey ed25519.PrivateKey
 	publicKey  ed25519.PublicKey
 }
 
-// NewSigner creates a new signer, loading or generating keys as needed
+// NewSigner creates a new signer, loading an existing key from keyPath or generating a new one.
+// Generates a new Ed25519 keypair if keyPath does not exist and saves it with 0600 permissions.
+// Returns an error if key generation or file I/O fails.
 func NewSigner(keyPath string) (*Signer, error) {
 	// Try to load existing key
 	privateKey, err := loadPrivateKey(keyPath)
@@ -45,19 +49,23 @@ func NewSigner(keyPath string) (*Signer, error) {
 	}, nil
 }
 
-// SignHash signs a hash string and returns the signature as hex
+// SignHash signs a hash string with Ed25519 and returns the signature as hex-encoded string.
+// The hash is signed directly (not re-hashed). Returns an error only on encoding failure (never fails in practice).
 func (s *Signer) SignHash(hash string) (string, error) {
 	hashBytes := []byte(hash)
 	signature := ed25519.Sign(s.privateKey, hashBytes)
 	return hex.EncodeToString(signature), nil
 }
 
-// GetPublicKey returns the public key as hex string
+// GetPublicKey returns the public key as a hex-encoded string.
+// Used for verification by external parties and included in exported evidence bags.
 func (s *Signer) GetPublicKey() string {
 	return hex.EncodeToString(s.publicKey)
 }
 
-// RotateKey generates a new keypair and saves it to the specified path
+// RotateKey generates a new Ed25519 keypair, saves it to keyPath, and updates the signer.
+// Returns old and new public keys as hex strings. Use for key rotation after compromise.
+// Returns an error if key generation or file save fails.
 func (s *Signer) RotateKey(keyPath string) (oldPubKey, newPubKey string, err error) {
 	oldPubKey = s.GetPublicKey()
 
@@ -77,7 +85,8 @@ func (s *Signer) RotateKey(keyPath string) (oldPubKey, newPubKey string, err err
 	return oldPubKey, newPubKey, nil
 }
 
-// VerifySignature verifies a signature against a hash
+// VerifySignature checks if a hex-encoded signature is valid for the given hash.
+// Returns true if signature is valid, false otherwise (including decode errors).
 func (s *Signer) VerifySignature(hash, signatureHex string) bool {
 	signature, err := hex.DecodeString(signatureHex)
 	if err != nil {

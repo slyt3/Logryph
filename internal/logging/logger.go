@@ -19,7 +19,8 @@ const (
 	levelCritical
 )
 
-// Fields captures structured context for log entries.
+// Fields captures structured context for JSON log entries.
+// Include RequestID and TaskID for correlation across distributed traces.
 type Fields struct {
 	RequestID string `json:"request_id,omitempty"`
 	TaskID    string `json:"task_id,omitempty"`
@@ -54,7 +55,8 @@ func init() {
 	log.SetFlags(0)
 }
 
-// Debug logs a debug-level message.
+// Debug logs a debug-level message with structured fields in JSON format.
+// Respects VOUCH_LOG_LEVEL environment variable. Returns silently if msg is empty.
 func Debug(msg string, fields Fields) {
 	if err := assert.Check(msg != "", "log message must not be empty"); err != nil {
 		return
@@ -65,7 +67,8 @@ func Debug(msg string, fields Fields) {
 	logWithLevel("debug", msg, fields)
 }
 
-// Info logs an info-level message.
+// Info logs an info-level message with structured fields in JSON format.
+// Default log level if VOUCH_LOG_LEVEL is unset. Returns silently if msg is empty.
 func Info(msg string, fields Fields) {
 	if err := assert.Check(msg != "", "log message must not be empty"); err != nil {
 		return
@@ -76,7 +79,8 @@ func Info(msg string, fields Fields) {
 	logWithLevel("info", msg, fields)
 }
 
-// Warn logs a warning-level message.
+// Warn logs a warning-level message with structured fields in JSON format.
+// Use for recoverable errors and degraded performance scenarios.
 func Warn(msg string, fields Fields) {
 	if err := assert.Check(msg != "", "log message must not be empty"); err != nil {
 		return
@@ -87,7 +91,8 @@ func Warn(msg string, fields Fields) {
 	logWithLevel("warn", msg, fields)
 }
 
-// Error logs an error-level message.
+// Error logs an error-level message with structured fields in JSON format.
+// Use for errors that require attention but don't stop the service.
 func Error(msg string, fields Fields) {
 	if err := assert.Check(msg != "", "log message must not be empty"); err != nil {
 		return
@@ -98,7 +103,8 @@ func Error(msg string, fields Fields) {
 	logWithLevel("error", msg, fields)
 }
 
-// Critical logs a critical-level message.
+// Critical logs a critical-level message with structured fields in JSON format.
+// Use for fatal errors that may cause service degradation or data loss.
 func Critical(msg string, fields Fields) {
 	if err := assert.Check(msg != "", "log message must not be empty"); err != nil {
 		return

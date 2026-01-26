@@ -14,7 +14,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the vouch-policy.yaml structure (2026.1 spec)
+// Config represents the vouch-policy.yaml structure (2026.1 spec).
+// Includes version, defaults section (retention, signing, log level), and policies list.
 type Config struct {
 	Version  string `yaml:"version"`
 	Defaults struct {
@@ -25,7 +26,8 @@ type Config struct {
 	Policies []Rule `yaml:"policies"`
 }
 
-// Rule represents a single policy rule
+// Rule represents a single policy rule with method patterns, conditions, and redaction keys.
+// MatchMethods supports wildcards (e.g., "aws:*"). Redact lists parameter keys to scrub.
 type Rule struct {
 	ID              string              `yaml:"id"`
 	MatchMethods    []string            `yaml:"match_methods"`
@@ -35,7 +37,9 @@ type Rule struct {
 	Redact          []string            `yaml:"redact,omitempty"` // List of param keys to redact
 }
 
-// ObserverEngine handles policy evaluation and enforcement
+// ObserverEngine handles policy evaluation and hot-reload from vouch-policy.yaml.
+// Reloads config every 5 seconds when Watch() is running.
+// Thread-safe for concurrent policy lookups.
 type ObserverEngine struct {
 	mu         sync.RWMutex
 	config     *Config
@@ -44,7 +48,8 @@ type ObserverEngine struct {
 	stopOnce   sync.Once
 }
 
-// NewObserverEngine creates a new observer engine
+// NewObserverEngine creates a new observer engine and loads the initial policy file.
+// Returns an error if configPath is empty or policy file cannot be loaded/parsed.
 func NewObserverEngine(configPath string) (*ObserverEngine, error) {
 	if err := assert.Check(configPath != "", "config path must not be empty"); err != nil {
 		return nil, err
@@ -82,7 +87,9 @@ func loadConfig(path string) (*Config, error) {
 	return &config, nil
 }
 
-// Reload reloads the configuration from disk
+// Reload reloads the policy configuration from disk.
+// Returns an error if the file cannot be read or parsed.
+// Logs "policy_reloaded" event on success.
 func (e *ObserverEngine) Reload() error {
 	newConfig, err := loadConfig(e.configPath)
 	if err != nil {
@@ -97,7 +104,8 @@ func (e *ObserverEngine) Reload() error {
 	return nil
 }
 
-// Watch starts a background goroutine to watch for policy file changes
+// Watch starts a background goroutine that checks for policy file changes every 5 seconds.
+// Automatically reloads config when modification time changes. Call Stop() to terminate.
 func (e *ObserverEngine) Watch() {
 	if err := assert.NotNil(e, "engine"); err != nil {
 		return
@@ -138,7 +146,7 @@ func (e *ObserverEngine) Watch() {
 	}()
 }
 
-// Stop requests the watcher to stop.
+// Stop signals the watcher goroutine to terminate. Safe to call multiple times (idempotent).
 func (e *ObserverEngine) Stop() error {
 	if err := assert.NotNil(e, "engine"); err != nil {
 		return err
@@ -152,28 +160,31 @@ func (e *ObserverEngine) Stop() error {
 	return nil
 }
 
-// GetVersion returns the policy version
+// GetVersion returns the policy version string from the loaded config.
 func (e *ObserverEngine) GetVersion() string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.config.Version
 }
 
-// GetRuleCount returns the number of policy rules
+// GetRuleCount returns the number of policy rules currently loaded.
 func (e *ObserverEngine) GetRuleCount() int {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return len(e.config.Policies)
 }
 
-// GetPolicies returns the full list of rules (for interceptor)
+// GetPolicies returns a copy of all policy rules for interceptor evaluation.
+// Thread-safe for concurrent access.
 func (e *ObserverEngine) GetPolicies() []Rule {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.config.Policies
 }
 
-// MatchPattern matches a method against a pattern with wildcard support
+// MatchPattern checks if a method matches a policy pattern.
+// Supports exact match and wildcard patterns (e.g., "aws:*" matches "aws:CreateBucket").
+// Returns false if either pattern or method is empty.
 func MatchPattern(pattern, method string) bool {
 	if err := assert.Check(pattern != "", "pattern is non-empty"); err != nil {
 		return false
@@ -194,7 +205,9 @@ func MatchPattern(pattern, method string) bool {
 	return false
 }
 
-// CheckConditions evaluates policy conditions against request parameters
+// CheckConditions evaluates policy conditions against request parameters.
+// Supports operators: eq, gt, lt, gte, lte. Returns true if all conditions pass.
+// Returns true if conditions list is empty. Returns false if params is nil.
 func CheckConditions(conditions []map[string]string, params map[string]interface{}) bool {
 	if len(conditions) == 0 {
 		return true

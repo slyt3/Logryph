@@ -10,8 +10,10 @@ import (
 	"github.com/ucarion/jcs"
 )
 
-// CalculateEventHash ensures deterministic hashing across any model/platform
-// Uses RFC 8785 (JSON Canonicalization Scheme) for consistent serialization
+// CalculateEventHash computes a cryptographic hash of an event using SHA-256.
+// Ensures deterministic hashing across platforms via RFC 8785 (JSON Canonicalization Scheme).
+// Hash is computed as SHA-256(prevHash + CanonicalJSON(payload)).
+// Returns an error if prevHash is empty or payload is nil.
 func CalculateEventHash(prevHash string, payload interface{}) (string, error) {
 	// Safety Assertion: Verify prev_hash is non-empty (except genesis)
 	// Genesis block has 64 zeros as prev_hash
