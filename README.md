@@ -35,7 +35,7 @@ Ports: proxy `:9999`, admin/metrics `:9998`
 - Key: `.logryph_key`
 - Schema: `internal/ledger/store/schema.sql`
 
-## Demo (optional)
+## Demo
 
 Run a small local demo:
 ```bash
